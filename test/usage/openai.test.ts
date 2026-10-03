@@ -8,7 +8,7 @@ test("resolves refreshed Codex OAuth authentication through the current model re
 	const registry = {
 		getAll: () => [model],
 		isUsingOAuth: (candidate: unknown) => candidate === model,
-		getApiKeyForProvider: async () => jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "synthetic-account-primary" } }),
+		getApiKeyForProvider: async (_provider: string) => jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "synthetic-account-primary" } }),
 	};
 
 	assert.deepEqual(await resolveCodexOAuthAuth(registry), {

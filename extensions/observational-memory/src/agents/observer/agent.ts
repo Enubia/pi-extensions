@@ -187,8 +187,7 @@ ${conversation}`;
 	];
 
 	const context: AgentContext = {
-		systemPrompt: OBSERVER_SYSTEM,
-		messages: [],
+		messages: [{ role: "system", content: OBSERVER_SYSTEM, timestamp: Date.now() }],
 		tools: [recordObservations as AgentTool<any>],
 	};
 

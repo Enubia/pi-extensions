@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai/compat";
-import { ModelRegistry, ModelRuntime, type ExtensionAPI, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import register from "../../extensions/subagent-models/index.ts";
+import { DefaultResourceLoader, SettingsManager, ModelRegistry, ModelRuntime, type ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { fileURLToPath } from "node:url";
 
 test("qualified configured models reach the installed registry's thinking lookup through the command", async () => {
 	const root = mkdtempSync(join(tmpdir(), "subagent-models-runtime-"));
@@ -19,10 +19,18 @@ test("qualified configured models reach the installed registry's thinking lookup
 			fallbackProfile: "target",
 			profiles: { target: { providers: ["openai"], tiers: { standard: { model: `${model.provider}/${model.id}`, thinking: "high" } } } },
 		}));
-		let handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> = async () => { throw new Error("Command not registered"); };
-		register({ on() {}, registerCommand(_name, command) { handler = command.handler; } } as ExtensionAPI);
+		const loader = new DefaultResourceLoader({
+			cwd: root, agentDir: join(root, "agent"), settingsManager: SettingsManager.inMemory(),
+			additionalExtensionPaths: [fileURLToPath(new URL("../../extensions/subagent-models/index.ts", import.meta.url))],
+			noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true,
+		});
+		await loader.reload();
+		const loaded = loader.getExtensions();
+		assert.deepEqual(loaded.errors, []);
+		const command = loaded.extensions[0].commands.get("subagent-models");
+		assert.ok(command);
 		const notifications: { message: string; level: string }[] = [];
-		await handler("", {
+		await command.handler("", {
 			cwd: root, hasUI: false, model, modelRegistry: registry,
 			ui: { notify(message: string, level: string) { notifications.push({ message, level }); } },
 		} as ExtensionCommandContext);

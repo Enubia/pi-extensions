@@ -55,9 +55,10 @@ test("server requests: async handlers are awaited, unknown methods get MethodNot
 	});
 	t.notify("ask");
 	await done;
-	const byId = Object.fromEntries((replies as { id: string }[]).map((r) => [r.id, r]));
+	const byId = Object.fromEntries((replies as { id: string; result?: unknown; error?: { code: number } }[]).map((r) => [r.id, r]));
 	assert.deepEqual(byId.s1, { id: "s1", result: { ok: true } });
-	assert.equal((byId.s2 as { error: { code: number } }).error.code, -32601);
+	assert.ok(byId.s2.error);
+	assert.equal(byId.s2.error.code, -32601);
 	await t.dispose();
 });
 

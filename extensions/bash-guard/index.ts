@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { Container, SelectList, Text } from "@earendil-works/pi-tui";
@@ -284,7 +284,6 @@ function analyzeBashCommand(command: string): Risk | null {
 	const ops = tokens.filter(isOpToken).map((t) => t.op);
 	if (ops.some((op) => op === ">" || op === ">>" || op === "2>" || op === "2>>")) {
 		reasons.push("shell output redirection (can overwrite files)");
-		severity = severity === "high" ? "high" : "medium";
 	}
 	if (ops.includes("<")) {
 		reasons.push("shell input redirection (questionable)");
@@ -308,7 +307,7 @@ function analyzeBashCommand(command: string): Risk | null {
 	return { severity, reasons: uniq };
 }
 
-async function promptRunOrAbort(ctx: any, command: string, risk: Risk): Promise<"run" | "abort"> {
+async function promptRunOrAbort(ctx: ExtensionContext, command: string, risk: Risk): Promise<"run" | "abort"> {
 	if (!ctx.hasUI) return "abort";
 
 	const reasonsText = risk.reasons.map((r) => `• ${r}`).join("\n");

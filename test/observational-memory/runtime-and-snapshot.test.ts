@@ -1,8 +1,62 @@
 import { describe, expect, it } from "vitest";
+import { createAssistantMessageEventStream, type AssistantMessage, type Context } from "@earendil-works/pi-ai/compat";
+import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
+import { runDropper } from "../../extensions/observational-memory/src/agents/dropper/agent.js";
+import { DROPPER_SYSTEM } from "../../extensions/observational-memory/src/agents/dropper/prompts.js";
+import { runReflector } from "../../extensions/observational-memory/src/agents/reflector/agent.js";
+import { REFLECTOR_SYSTEM } from "../../extensions/observational-memory/src/agents/reflector/prompts.js";
+import type { WorkerStreamSimple } from "../../extensions/observational-memory/src/agents/worker-stream.js";
+import { runObserver } from "../../extensions/observational-memory/src/agents/observer/agent.js";
+import { OBSERVER_SYSTEM } from "../../extensions/observational-memory/src/agents/observer/prompts.js";
 import { costFromAgentEvent } from "../../extensions/observational-memory/src/agents/usage-cost.js";
 import { readEnabledFromLedger, Runtime, sumCostEntries } from "../../extensions/observational-memory/src/runtime.js";
 import { memorySnapshot } from "../../extensions/observational-memory/src/status/snapshot.js";
-import { assistantEntry, costEntry, enabledEntry, text, userEntry } from "./fixtures.js";
+import { assistantEntry, costEntry, enabledEntry, observation, text, userEntry } from "./fixtures.js";
+
+describe("worker request context", () => {
+	const model = getBuiltinModel("openai", "gpt-4o");
+	const observations = [observation(1, ["entry-1"], "Keep the widget blue.")];
+	const cases: { name: string; system: string; tool: string; user: string; run: (streamSimple: WorkerStreamSimple) => Promise<unknown> }[] = [
+		{
+			name: "observer", system: OBSERVER_SYSTEM, tool: "record_observations", user: "[Source entry id: entry-1] Keep the widget blue.",
+			run: (streamSimple) => runObserver({ model, priorReflections: ["Prior stable fact."], priorObservations: ["Prior observation."],
+				chunk: "[Source entry id: entry-1] Keep the widget blue.", allowedSourceEntryIds: ["entry-1"], streamSimple }),
+		},
+		{
+			name: "reflector", system: REFLECTOR_SYSTEM, tool: "record_reflections", user: "Keep the widget blue.",
+			run: (streamSimple) => runReflector({ model, reflections: [], observations, streamSimple }),
+		},
+		{
+			name: "dropper", system: DROPPER_SYSTEM, tool: "drop_observations", user: "Keep the widget blue.",
+			run: (streamSimple) => runDropper({ model, reflections: [], observations, targetTokens: 1, streamSimple }),
+		},
+	];
+	for (const worker of cases) it(`sends ${worker.name} instructions exactly once before user content and retains its tool through the real host loop`, async () => {
+		const requests: Context[] = [];
+		await worker.run((_model, context) => {
+			requests.push({ ...context, messages: structuredClone(context.messages) });
+			const message: AssistantMessage = {
+				role: "assistant", content: [{ type: "text", text: "Done." }], api: model.api, provider: model.provider, model: model.id,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				stopReason: "stop", timestamp: 0,
+			};
+			const stream = createAssistantMessageEventStream();
+			stream.push({ type: "done", reason: "stop", message });
+			return stream;
+		});
+		expect(requests).toHaveLength(1);
+		expect(requests[0].messages[0]).toMatchObject({ role: "system", content: worker.system });
+		expect(requests[0].messages.map((message) => message.role)).toEqual(["system", "system", "user"]);
+		const systems = requests[0].messages.filter((message) => message.role === "system");
+		expect(systems.filter((message) => message.content === worker.system)).toHaveLength(1);
+		expect(systems.flatMap((message) => message.toolsAdded ?? []).map((tool) => tool.name)).toEqual([worker.tool]);
+		const user = requests[0].messages[2];
+		expect(user.role).toBe("user");
+		expect(JSON.stringify(user.content)).toContain(worker.user);
+		expect(JSON.stringify(user.content)).toContain("CURRENT REFLECTIONS:");
+		expect(JSON.stringify(user.content)).toContain("CURRENT OBSERVATIONS:");
+	});
+});
 
 describe("sumCostEntries", () => {
 	it("sums every om.cost entry regardless of branch", () => {

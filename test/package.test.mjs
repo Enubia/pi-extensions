@@ -48,19 +48,21 @@ test("root owns patched shell-quote while all five host packages remain unbounde
 	for (const name of ["preinstall", "install", "postinstall"]) assert.equal(pkg.scripts?.[name], undefined);
 });
 
-test("the install graph excludes known shell-quote and development brace-expansion advisories", () => {
+test("the install graph keeps patched shell-quote and confines brace-expansion to Pi development dependencies", () => {
 	const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
 	assert.deepEqual(lock.packages[""].dependencies, { "shell-quote": "^1.12.0" });
 	assert.equal(lock.packages["node_modules/shell-quote"].version, "1.12.0");
 	const runtime = Object.entries(lock.packages).filter(([path, pkg]) => path && !pkg.dev).map(([path]) => path);
 	assert.deepEqual(runtime, ["node_modules/shell-quote"]);
 	const bracePackages = Object.entries(lock.packages).filter(([path]) => path.endsWith("/brace-expansion"));
-	assert.ok(bracePackages.length > 0);
+	assert.deepEqual(bracePackages.map(([path]) => path), ["node_modules/@earendil-works/pi-coding-agent/node_modules/brace-expansion"]);
 	for (const [path, pkg] of bracePackages) {
-		assert.match(pkg.version, /^5\.0\.\d+$/, path);
-		assert.ok(Number(pkg.version.split(".")[2]) >= 12, `${path}: ${pkg.version}`);
 		assert.equal(pkg.dev, true, path);
 	}
+	const hostPath = "node_modules/@earendil-works/pi-coding-agent";
+	assert.equal(lock.packages[hostPath].dev, true);
+	assert.ok(lock.packages[hostPath].dependencies.minimatch);
+	assert.ok(lock.packages[`${hostPath}/node_modules/minimatch`].dependencies["brace-expansion"]);
 	for (const name of Object.keys(manifest().peerDependencies)) {
 		assert.equal(lock.packages[`node_modules/${name}`].version, name === "typebox" ? "1.3.27" : "1.0.0");
 		assert.equal(lock.packages[`node_modules/${name}`].dev, true);
@@ -74,7 +76,7 @@ test("the Node runner discovers centralized suites without mixing in Vitest", ()
 	assert.ok(files.includes("test/package.test.mjs"));
 	assert.ok(files.includes("test/statusline/statusline-memory.test.ts"));
 	assert.ok(files.includes("test/support/host-modules.test.ts"));
-	assert.equal(files.filter(file => file.endsWith(".test.ts")).length, 21);
+	assert.equal(files.filter(file => file.endsWith(".test.ts")).length, 22);
 	assert.equal(files.some(file => file.startsWith("test/observational-memory/")), false);
 });
 

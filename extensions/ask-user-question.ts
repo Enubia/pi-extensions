@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
 	Editor,
 	type EditorTheme,
@@ -104,7 +104,7 @@ function getOtherLabel(options: AskOption[]): string {
 	return options.some((option) => option.label.toLowerCase() === "other") ? "Other (custom)" : "Other";
 }
 
-function createEditorTheme(theme: any): EditorTheme {
+function createEditorTheme(theme: Theme): EditorTheme {
 	return {
 		borderColor: (s) => theme.fg("accent", s),
 		selectList: {
@@ -201,7 +201,7 @@ function buildResult(question: string, context: string | undefined, mode: AskUse
 }
 
 async function askSingleChoice(
-	ctx: any,
+	ctx: ExtensionContext,
 	question: string,
 	context: string | undefined,
 	options: AskOption[],
@@ -212,7 +212,7 @@ async function askSingleChoice(
 		{ id: "other", label: otherLabel, value: "__other__", isOther: true },
 	];
 
-	return ctx.ui.custom<AskAnswer | null>((tui: any, theme: any, _kb: any, done: (result: AskAnswer | null) => void) => {
+	return ctx.ui.custom<AskAnswer | null>((tui, theme, _kb, done) => {
 		let optionIndex = 0;
 		let editMode = false;
 		let cachedLines: string[] | undefined;
@@ -334,7 +334,7 @@ async function askSingleChoice(
 }
 
 async function askMultiChoice(
-	ctx: any,
+	ctx: ExtensionContext,
 	question: string,
 	context: string | undefined,
 	options: AskOption[],
@@ -352,7 +352,7 @@ async function askMultiChoice(
 		submitItem,
 	];
 
-	return ctx.ui.custom<AskAnswer[] | null>((tui: any, theme: any, _kb: any, done: (result: AskAnswer[] | null) => void) => {
+	return ctx.ui.custom<AskAnswer[] | null>((tui, theme, _kb, done) => {
 		let optionIndex = 0;
 		let editMode = false;
 		let cachedLines: string[] | undefined;

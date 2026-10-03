@@ -32,6 +32,7 @@
     "test:node": "node test/support/run-isolated.mjs node test/support/run-tests.mjs",
     "test:memory": "node test/support/run-isolated.mjs vitest run",
     "test:install": "node test/support/run-isolated.mjs node test/package-install.mjs",
+    "typecheck": "tsc --noEmit",
     "typecheck:memory": "tsc --noEmit -p extensions/observational-memory/tsconfig.json"
   },
   "devDependencies": {

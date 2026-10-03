@@ -16,7 +16,7 @@ function harness(config: Record<string, unknown> = {}, models: FakeModel[] = [],
 	const settings = join(homedir(), ".pi", "agent", "settings.json");
 	const read = test.mock.method(fs, "readFileSync", (path: fs.PathOrFileDescriptor, options?: Parameters<typeof fs.readFileSync>[1]) => path === settings
 		? JSON.stringify({ "session-namer": config })
-		: original(path, options));
+		: original(path, options ?? {}));
 	syncBuiltinESMExports();
 	const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => Promise<void>>();
 	const entries: unknown[] = [{ type: "message", message: { role: "user", content: "Fix the widget" } }];

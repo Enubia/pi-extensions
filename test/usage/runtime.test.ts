@@ -109,7 +109,8 @@ test("dual subscription logins stay provider-specific and the fallback lists eac
 });
 
 test("OpenAI API-key-only and missing auth never request subscription quota", async () => {
-	for (const credentials of [{ openai: { type: "api_key", key: "fake-api-key" } as Credential }, {}]) {
+	const cases: Record<string, Credential>[] = [{ openai: { type: "api_key", key: "fake-api-key" } }, {}];
+	for (const credentials of cases) {
 		const { ctx, notifications } = await context("openai", credentials);
 		const fetchMock = mock.method(globalThis, "fetch", async () => { throw new Error("Subscription request forbidden"); });
 		try {
@@ -162,7 +163,8 @@ test("ChatGPT token refresh remains runtime-owned and failures stay secret-safe"
 });
 
 test("refresh discovers ChatGPT after an active OpenAI API key or missing login upgrades to OAuth", async () => {
-	for (const credentials of [{ openai: { type: "api_key", key: "fake-api-key" } as Credential }, {}]) {
+	const cases: Record<string, Credential>[] = [{ openai: { type: "api_key", key: "fake-api-key" } }, {}];
+	for (const credentials of cases) {
 		const { ctx, store } = await context("openai", credentials);
 		const views = modalViews(ctx, [
 			{ select: 0, before: () => store.modify("openai", async () => chatGPTCredential) },
