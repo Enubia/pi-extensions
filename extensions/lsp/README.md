@@ -21,7 +21,7 @@ After a successful `write`/`edit` on a file whose server is already running, err
 
 `/lsp` — status of running servers (state, pid, pull/push diagnostics, root, command)
 `/lsp restart [id]` — stop servers; they restart on next use
-`/lsp servers` — configured servers and their extensions
+`/lsp list` (alias: `/lsp servers`) — configured servers and their file extensions, including custom entries and excluding disabled ones; does not check binary installation or start servers
 
 ## Built-in servers
 

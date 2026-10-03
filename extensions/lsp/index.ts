@@ -61,9 +61,9 @@ export default function lsp(pi: ExtensionAPI) {
 	registerLspTools(pi, getManager);
 
 	pi.registerCommand("lsp", {
-		description: "Language servers: /lsp [status|restart [id]|servers]",
+		description: "Language servers: /lsp [status|restart [id]|list|servers]",
 		getArgumentCompletions: (prefix) => {
-			const items = ["status", "restart", "servers"].filter((v) => v.startsWith(prefix)).map((v) => ({ value: v, label: v }));
+			const items = ["status", "restart", "list", "servers"].filter((v) => v.startsWith(prefix)).map((v) => ({ value: v, label: v }));
 			return items.length ? items : null;
 		},
 		handler: async (args, ctx) => {
@@ -74,7 +74,7 @@ export default function lsp(pi: ExtensionAPI) {
 				ctx.ui.notify(`Stopped ${n} language server(s); they restart on next use.`, "info");
 				return;
 			}
-			if (sub === "servers") {
+			if (sub === "list" || sub === "servers") {
 				const lines = m.specs.map((s) => `${s.id}: ${Object.keys(s.languageIds).join(" ")}`);
 				ctx.ui.notify(lines.join("\n") || "No servers configured.", "info");
 				return;
