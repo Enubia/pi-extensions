@@ -87,7 +87,7 @@ export class LspClient {
 				clientInfo: { name: "pi-lsp", version: "0.1.0" },
 				rootUri,
 				workspaceFolders: [{ uri: rootUri, name: this.root.split("/").pop() ?? "root" }],
-				initializationOptions: this.spec.initializationOptions,
+				initializationOptions: this.command.initializationOptions ?? this.spec.initializationOptions,
 				capabilities: {
 					workspace: { configuration: true, workspaceFolders: true, symbol: { dynamicRegistration: false } },
 					textDocument: {
@@ -111,8 +111,10 @@ export class LspClient {
 			this.state = "ready";
 		} catch (error) {
 			this.state = "failed";
-			this.lastError = error instanceof Error ? error.message : String(error);
-			throw error;
+			const message = error instanceof Error ? error.message : String(error);
+			const stderr = this.stderrTail.join("\n").slice(-2_000);
+			this.lastError = stderr ? `${message}\n${stderr}` : message;
+			throw new LspError(this.lastError);
 		}
 	}
 

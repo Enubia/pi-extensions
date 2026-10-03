@@ -27,12 +27,22 @@ After a successful `write`/`edit` on a file whose server is already running, err
 
 | id | extensions | binary resolution |
 | --- | --- | --- |
-| `typescript` | `.ts .tsx .js .jsx .mts .cts .mjs .cjs` | `node_modules/.bin/tsc --lsp` when `tsserver.js` is absent (TypeScript 7), else `typescript-language-server --stdio` (local, then PATH), then `tsc --lsp`, then `tsgo --lsp` |
+| `typescript` | `.ts .tsx .js .jsx .mts .cts .mjs .cjs` | Ancestor-resolved workspace TypeScript: native `tsc --lsp --stdio` for 7+, pinned `typescript-language-server --stdio` for legacy versions. Without workspace TypeScript: local native preview, then bridge, then PATH `tsgo --lsp --stdio`. |
 | `go` | `.go` | `gopls` on PATH |
 | `rust` | `.rs` | `rust-analyzer` on PATH |
 | `python` | `.py .pyi` | `pyright-langserver --stdio` (local, then PATH) |
 
-Only `typescript` (both TS 5 and TS 7) has been verified end-to-end; the others are declarative and untested.
+Only `typescript` has been verified end-to-end: TS 5.9.3 and 6.0.3 with `typescript-language-server` 6.0.0, TS 7.0.2, and native preview 7.0.0-dev.20260707.2. The other languages are declarative and untested.
+
+### TypeScript selection
+
+The nearest tsconfig/jsconfig/package directory remains the LSP project root. Compiler discovery searches its `node_modules` and ancestors, including hoisted monorepo and worktree dependencies. The nearest `typescript` package wins; a preview never replaces an installed workspace compiler automatically.
+
+Native launchers come from the selected package's `bin` metadata and run via the current Node executable, avoiding unrelated `.bin/tsc` shims. `typescript@7+` uses `tsc`; `@typescript/native-preview` uses `tsgo`. Both receive `--lsp --stdio`. For legacy TypeScript, the bridge is searched locally and through ancestors before PATH, and receives the selected `lib/tsserver.js` through `initializationOptions.tsserver.path`.
+
+Broken workspace packages fail rather than falling back to another compiler. Missing native platform dependencies are reported with startup stderr; reinstall with optional dependencies enabled. A legacy compiler without a bridge reports that `typescript-language-server` must be installed. A bare `tsc` on PATH is never assumed to support LSP. Explicit server configuration still overrides this selection.
+
+`/lsp` shows the selected command; `/lsp restart typescript` clears cached startup failures after repairs.
 
 ## Adding a language
 
@@ -64,7 +74,7 @@ Two options.
 
 ## Diagnostics model
 
-- Servers advertising `diagnosticProvider` are queried with `textDocument/diagnostic` (pull). Required for TypeScript 7, which never pushes file diagnostics.
+- Servers advertising `diagnosticProvider` are queried with `textDocument/diagnostic` (pull). Required for TypeScript 7 source-file diagnostics; TS7 can separately push project/config diagnostics to tsconfig URIs. Pushes for unopened documents are not retained.
 - Otherwise the client waits for the first `publishDiagnostics` for the file, then until `diagnosticsSettleMs` of quiet, capped at `diagnosticsMaxWaitMs`.
 
 ## Layout
@@ -73,7 +83,8 @@ Two options.
 protocol.ts   Content-Length framing, message type guards      (pure, tested)
 transport.ts  spawn + JSON-RPC request/notify/server-requests
 types.ts      minimal LSP wire types used here
-registry.ts   ServerSpec catalog, user-config merge, root finding (pure, tested)
+registry.ts   ServerSpec catalog, backend selection, user-config merge, root finding
+typescript.ts ancestor package discovery and native launcher validation
 client.ts     one server process: initialize, doc sync, LSP requests
 manager.ts    (spec, root) → client lifecycle, trust gate, config loading
 format.ts     LSP results → compact text for the model          (pure, tested)
@@ -83,9 +94,18 @@ index.ts      extension entry: hooks, /lsp command
 
 Tests from the package root: `node test/support/run-tests.mjs test/lsp/*.test.ts`
 
+Real-server tests are opt-in and never install dependencies automatically. Set any of these to an installed **package directory**, not its executable: `PI_LSP_TEST_TS7_PACKAGE`, `PI_LSP_TEST_PREVIEW_PACKAGE`, `PI_LSP_TEST_LEGACY_PACKAGE`. Legacy checks also require `typescript-language-server` on PATH. Run the test runner directly; `npm test` uses an isolated environment without these variables.
+
+```bash
+PI_LSP_TEST_TS7_PACKAGE=/path/to/node_modules/typescript \
+  node test/support/run-tests.mjs test/lsp/typescript.integration.test.ts
+```
+
+These tests exercise ancestor discovery, all six tools, diagnostics after edits, and restart/cleanup. Pin the installed versions for reproducible results.
+
 ## Known gaps (from review, deferred)
 
 - `workspace/configuration` returns the same `settings` object for every requested section; gopls/rust-analyzer ask per section — make `settings` section-keyed before verifying them.
-- No `workspace/didChangeWatchedFiles`, no `$/progress` handling — Go/Rust may answer mid-index or see stale files.
+- No `workspace/didChangeWatchedFiles`, no `$/progress` handling — Go/Rust may answer mid-index or see stale files. TS7 may also miss changes to unopened dependencies/configs on platforms without its native watcher fallback (notably Linux).
 - One extension maps to exactly one spec; a Vue setup needing both `vue-language-server` and tsserver on `.vue` is not expressible yet.
 - Only `write`/`edit` trigger auto-diagnostics; other editing tools are ignored.

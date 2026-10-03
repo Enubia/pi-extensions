@@ -76,7 +76,9 @@ test("the Node runner discovers centralized suites without mixing in Vitest", ()
 	assert.ok(files.includes("test/package.test.mjs"));
 	assert.ok(files.includes("test/statusline/statusline-memory.test.ts"));
 	assert.ok(files.includes("test/support/host-modules.test.ts"));
-	assert.equal(files.filter(file => file.endsWith(".test.ts")).length, 22);
+	assert.ok(files.includes("test/lsp/manager.test.ts"));
+	assert.ok(files.includes("test/lsp/typescript.integration.test.ts"));
+	assert.equal(files.filter(file => file.endsWith(".test.ts")).length, 24);
 	assert.equal(files.some(file => file.startsWith("test/observational-memory/")), false);
 });
 

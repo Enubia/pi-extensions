@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { findTypeScriptPackage, nativeTypeScriptCommand } from "./typescript.ts";
 
 export interface ResolvedCommand {
 	command: string;
 	args: string[];
+	initializationOptions?: unknown;
 }
 
 export interface ResolveContext {
@@ -49,6 +51,14 @@ function localBin(root: string, name: string): string | undefined {
 	return existsSync(candidate) ? candidate : undefined;
 }
 
+function ancestorBin(root: string, name: string): string | undefined {
+	for (let dir = root; ; dir = dirname(dir)) {
+		const bin = localBin(dir, name);
+		if (bin) return bin;
+		if (dir === dirname(dir)) return undefined;
+	}
+}
+
 const TS_LANGUAGE_IDS: Record<string, string> = {
 	".ts": "typescript",
 	".mts": "typescript",
@@ -65,12 +75,18 @@ export const typescriptSpec: ServerSpec = {
 	languageIds: TS_LANGUAGE_IDS,
 	rootMarkers: ["tsconfig.json", "jsconfig.json", "package.json"],
 	resolve: ({ root, which }) => {
-		const hasTsserver = existsSync(join(root, "node_modules", "typescript", "lib", "tsserver.js"));
-		const localTsc = localBin(root, "tsc");
-		if (!hasTsserver && localTsc) return { command: localTsc, args: ["--lsp", "--stdio"] };
-		const tsls = localBin(root, "typescript-language-server") ?? which("typescript-language-server");
+		const pkg = findTypeScriptPackage(root, "typescript");
+		if (pkg && Number.parseInt(pkg.version, 10) >= 7) return nativeTypeScriptCommand(pkg, "tsc");
+		const tsls = ancestorBin(root, "typescript-language-server") ?? which("typescript-language-server");
+		if (pkg) {
+			const tsserver = join(pkg.directory, "lib", "tsserver.js");
+			if (!existsSync(tsserver)) throw new Error(`TypeScript ${pkg.version} at ${pkg.directory} has no tsserver.js. Reinstall TypeScript in this workspace.`);
+			if (!tsls) throw new Error(`TypeScript ${pkg.version} requires typescript-language-server. Install it in this workspace or on PATH.`);
+			return { command: tsls, args: ["--stdio"], initializationOptions: { tsserver: { path: tsserver } } };
+		}
+		const preview = findTypeScriptPackage(root, "@typescript/native-preview");
+		if (preview) return nativeTypeScriptCommand(preview, "tsgo");
 		if (tsls) return { command: tsls, args: ["--stdio"] };
-		if (localTsc) return { command: localTsc, args: ["--lsp", "--stdio"] };
 		const globalTsgo = which("tsgo");
 		if (globalTsgo) return { command: globalTsgo, args: ["--lsp", "--stdio"] };
 		return undefined;

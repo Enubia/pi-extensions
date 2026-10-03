@@ -126,7 +126,7 @@ export class LspManager {
 			this.failures.set(key, message);
 			this.clients.delete(key);
 			await client.dispose();
-			throw new LspUnavailable(`${target.spec.id} failed to start: ${message}`);
+			throw new LspUnavailable(`${target.spec.id} failed to start (${command.command} ${command.args.join(" ")}): ${message}`);
 		}
 		return client;
 	}
