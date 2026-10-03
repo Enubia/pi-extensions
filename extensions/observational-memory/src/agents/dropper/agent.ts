@@ -255,7 +255,12 @@ export async function runDropper(args: RunDropperArgs): Promise<string[] | undef
 		convertToLlm: (msgs) => msgs as Message[],
 		toolExecution: "sequential",
 		...(reasoning && thinkingLevel !== "off" ? { reasoning: thinkingLevel } : {}),
-		...(effectiveMaxTurns !== undefined ? { shouldStopAfterTurn: () => ++turnCount >= effectiveMaxTurns } : {}),
+		...(effectiveMaxTurns !== undefined ? {
+			finishTurn: ({ message }) => {
+				if (message.stopReason === "error" || message.stopReason === "aborted") return;
+				return ++turnCount >= effectiveMaxTurns ? { action: "end" } : undefined;
+			},
+		} : {}),
 	};
 
 	const loop = args.agentLoop ?? agentLoop;

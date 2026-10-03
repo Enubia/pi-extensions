@@ -8,7 +8,7 @@ amosblomqvist's implementation. See `NOTICE`.
 
 - **Observer → reflector → dropper** workers distill raw conversation into observations
   (timestamped, id-addressed) and reflections, recorded as `om.*` entries in the session JSON.
-  No files outside the session.
+  Memory records live in the session ledger; other existing outputs are described below.
 - **Compaction fires on `turn_end`**, not after the run settles. Progress is provider-reported
   context growth since the last compaction (raw estimate as fallback). A compaction that lands
   mid-run resumes the agent automatically via a hidden message.
@@ -29,7 +29,7 @@ amosblomqvist's implementation. See `NOTICE`.
 |---|---|
 | `/om`, `/om on`, `/om off` | Per-session gate, persisted in the ledger (`om.enabled`); default on |
 | `/om:status` | Memory, activity, worker cost, compaction settings, in-flight state, last errors |
-| `/om:view` | Render the current memory projection |
+| `/om:view [full]` | Display visible memory (default) or all recorded memory (`full`); automatically attempt to copy the displayed content to the system clipboard |
 | `/om:compact` | Force a compaction now (idle only, no resume) |
 | `/om:consolidate` | Force observer → reflector → dropper now |
 | `/om:model [provider/model[:thinking] \| clear]` | Pick the worker model (picker when bare); writes `observational-memory.model` and reloads |
@@ -48,6 +48,28 @@ All elpapi42 keys are unchanged. New:
   }
 }
 ```
+
+## Data handling and privacy
+
+Workers send conversation chunks and current memory to the selected model/provider for
+processing (the session model unless a worker model is configured). Provider retention and
+processing policies apply; session-ledger storage does not imply local-only processing.
+
+Memory and worker costs are recorded as `om.*` session entries. With `debugLog: true`
+(default `false`), diagnostic events are also written under the Pi agent directory to
+`observational-memory/debug/<session-id>.ndjson`, or `observational-memory/debug.ndjson`
+when no usable session id is available. Logs include session paths/identifiers, working
+directory and event data, and rotate to a `.1` file at the size limit.
+
+`/om:model` persists the worker model selection in the agent directory's `settings.json`
+and reloads; `/om:factor` similarly persists compaction settings. These settings updates
+are separate from session memory.
+
+`/om:view` automatically attempts clipboard copying on every valid invocation, including
+`full`; there is no separate opt-in. Copying uses available platform clipboard utilities
+and reports success or failure. Clipboard contents may be accessible to other applications
+or clipboard-history/sync services. This extension does not guarantee that memory remains
+exclusively in session files or that no external copies exist.
 
 ## Development
 
