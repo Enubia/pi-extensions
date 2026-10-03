@@ -1,0 +1,48 @@
+{
+  "name": "@enubia/pi-extensions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": [
+      "./extensions/ask-user-question.ts",
+      "./extensions/bash-guard/index.ts",
+      "./extensions/cmux-notify/index.ts",
+      "./extensions/lsp/index.ts",
+      "./extensions/observational-memory/src/index.ts",
+      "./extensions/om-factor/index.ts",
+      "./extensions/provider-failover/index.ts",
+      "./extensions/session-namer/index.ts",
+      "./extensions/statusline.ts",
+      "./extensions/subagent-models/index.ts",
+      "./extensions/usage/index.ts"
+    ]
+  },
+  "dependencies": { "shell-quote": "^1.8.3" },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "scripts": {
+    "test": "npm run test:node && npm run test:memory",
+    "test:node": "node test/support/run-isolated.mjs node test/support/run-tests.mjs",
+    "test:memory": "node test/support/run-isolated.mjs vitest run",
+    "test:install": "node test/support/run-isolated.mjs node test/package-install.mjs",
+    "typecheck:memory": "tsc --noEmit -p extensions/observational-memory/tsconfig.json"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.0.0",
+    "@earendil-works/pi-agent-core": "1.0.0",
+    "@earendil-works/pi-coding-agent": "1.0.0",
+    "@earendil-works/pi-tui": "1.0.0",
+    "typebox": "1.3.27",
+    "@types/node": "^24.0.0",
+    "@types/shell-quote": "^1.7.5",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.5"
+  }
+}

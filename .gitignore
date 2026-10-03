@@ -1,0 +1,8 @@
+node_modules/
+.scratch/
+*.log
+coverage/
+dist/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db

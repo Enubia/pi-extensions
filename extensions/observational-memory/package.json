@@ -1,0 +1,22 @@
+{
+  "name": "observational-memory",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Hybrid observational memory for pi: session-ledger observations/reflections with recall, mid-run compaction, and cost tracking.",
+  "type": "module",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "scripts": {
+    "typecheck": "npm --prefix ../.. run typecheck:memory",
+    "test": "npm --prefix ../.. run test:memory"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  }
+}
