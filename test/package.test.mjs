@@ -32,9 +32,9 @@ test("the private package exposes exactly eleven real extension factories", () =
 	for (const entrypoint of pkg.pi.extensions) assert.ok(statSync(join(root, entrypoint)).isFile());
 });
 
-test("root owns shell-quote while all five host packages remain unbounded peers", () => {
+test("root owns patched shell-quote while all five host packages remain unbounded peers", () => {
 	const pkg = manifest();
-	assert.deepEqual(pkg.dependencies, { "shell-quote": "^1.8.3" });
+	assert.deepEqual(pkg.dependencies, { "shell-quote": "^1.12.0" });
 	assert.deepEqual(pkg.peerDependencies, {
 		"@earendil-works/pi-ai": "*",
 		"@earendil-works/pi-agent-core": "*",
@@ -46,6 +46,25 @@ test("root owns shell-quote while all five host packages remain unbounded peers"
 	assert.equal(pkg.workspaces, undefined);
 	assert.equal(pkg.license, undefined);
 	for (const name of ["preinstall", "install", "postinstall"]) assert.equal(pkg.scripts?.[name], undefined);
+});
+
+test("the install graph excludes known shell-quote and development brace-expansion advisories", () => {
+	const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
+	assert.deepEqual(lock.packages[""].dependencies, { "shell-quote": "^1.12.0" });
+	assert.equal(lock.packages["node_modules/shell-quote"].version, "1.12.0");
+	const runtime = Object.entries(lock.packages).filter(([path, pkg]) => path && !pkg.dev).map(([path]) => path);
+	assert.deepEqual(runtime, ["node_modules/shell-quote"]);
+	const bracePackages = Object.entries(lock.packages).filter(([path]) => path.endsWith("/brace-expansion"));
+	assert.ok(bracePackages.length > 0);
+	for (const [path, pkg] of bracePackages) {
+		assert.match(pkg.version, /^5\.0\.\d+$/, path);
+		assert.ok(Number(pkg.version.split(".")[2]) >= 12, `${path}: ${pkg.version}`);
+		assert.equal(pkg.dev, true, path);
+	}
+	for (const name of Object.keys(manifest().peerDependencies)) {
+		assert.equal(lock.packages[`node_modules/${name}`].version, name === "typebox" ? "1.3.27" : "1.0.0");
+		assert.equal(lock.packages[`node_modules/${name}`].dev, true);
+	}
 });
 
 test("the Node runner discovers centralized suites without mixing in Vitest", () => {

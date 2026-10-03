@@ -36,7 +36,8 @@ try {
 	assert.equal(quotePath, join(packageDir, "node_modules/shell-quote/index.js"));
 	const shellQuote = await import(pathToFileURL(quotePath).href);
 	assert.deepEqual(shellQuote.default.parse("echo 'synthetic value'"), ["echo", "synthetic value"]);
-	assert.equal(JSON.parse(readFileSync(join(packageDir, "node_modules/shell-quote/package.json"))).version, "1.8.3");
+	const shellQuoteVersion = JSON.parse(readFileSync(join(packageDir, "node_modules/shell-quote/package.json"))).version;
+	assert.equal(shellQuoteVersion, "1.12.0");
 	const loader = new DefaultResourceLoader({
 		cwd, agentDir, settingsManager: SettingsManager.inMemory({ packages: [packageDir] }),
 		additionalExtensionPaths: [packageDir],
@@ -58,7 +59,7 @@ try {
 		assert.equal(new Set(names).size, names.length, `Duplicate ${key}`);
 	}
 	assert.equal(existsSync(join(agentDir, "extensions")), false);
-	console.log(JSON.stringify({ hostVersion: JSON.parse(readFileSync(join(hostRoot, "package.json"))).version, productionModules: modules, order, registrations, duplicates: [], agentDirectoryHasLooseExtensions: false }, null, 2));
+	console.log(JSON.stringify({ hostVersion: JSON.parse(readFileSync(join(hostRoot, "package.json"))).version, productionModules: modules, shellQuoteVersion, order, registrations, duplicates: [], agentDirectoryHasLooseExtensions: false }, null, 2));
 } finally {
 	for (const [key, value] of Object.entries(previous)) {
 		if (value === undefined) delete process.env[key];
