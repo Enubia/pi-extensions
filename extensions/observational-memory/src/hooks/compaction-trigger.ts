@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { resolveCompactAfterTokens } from "../config.js";
+import { resolveCompactionPolicy } from "../config.js";
 import { debugLog, withDebugLogContext } from "../debug-log.js";
 import type { Runtime } from "../runtime.js";
 import {
@@ -25,7 +25,7 @@ export type TriggerCtx = {
 	cwd: string;
 	hasUI: boolean;
 	ui?: { notify: (message: string, type?: "warning" | "info" | "error") => void };
-	model?: { contextWindow?: number };
+	model?: { provider?: string; contextWindow?: number };
 	getContextUsage?: () => { tokens: number | null; contextWindow?: number } | undefined;
 	sessionManager?: { getBranch?: () => unknown; getSessionId?: () => string; getSessionFile?: () => string | undefined };
 	compact: (options: {
@@ -69,7 +69,7 @@ export function registerCompactionTrigger(pi: ExtensionAPI, runtime: Runtime): v
 
 		const usage = ctx.getContextUsage?.();
 		const progress = compactionProgress(entries, usage?.tokens);
-		const threshold = resolveCompactAfterTokens(runtime.config, usage?.contextWindow, ctx.model?.contextWindow);
+		const threshold = resolveCompactionPolicy(runtime.config, ctx.model, usage?.contextWindow).threshold;
 		if (progress < threshold) return;
 
 		const shouldResume = runtime.config.resumeAfterMidRunCompaction && turnWillContinue(event as TurnEndLike);

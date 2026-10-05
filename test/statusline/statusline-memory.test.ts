@@ -20,7 +20,7 @@ test("a relocated package footer reads bundled memory and refreshes the physical
 		mkdirSync(packageDir);
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 		writeFileSync(join(agentDir, "settings.json"), JSON.stringify({
-			"observational-memory": { compactAfterTokensMode: "ratio", compactAfterTokensRatio: 0.5 },
+			"observational-memory": { compactAfterTokensMode: "ratio", compactAfterTokensRatio: 0.5, compactAfterTokensRatioByProvider: { other: 0.25 } },
 		}));
 		cpSync(join(import.meta.dirname, "../../extensions/statusline.ts"), join(packageDir, "statusline.ts"));
 		cpSync(join(import.meta.dirname, "../../extensions/observational-memory"), join(packageDir, "observational-memory"), { recursive: true });
@@ -62,6 +62,8 @@ test("a relocated package footer reads bundled memory and refreshes the physical
 		assert.match(footer.render(240)[0], /cmp .*50%/);
 		contextWindow = 256_000;
 		assert.match(footer.render(240)[0], /cmp .*25%/);
+		ctx.model.provider = "other";
+		assert.match(footer.render(240)[0], /cmp .*50%/);
 		assert.equal(existsSync(join(agentDir, "extensions")), false);
 	} finally {
 		dispose?.();

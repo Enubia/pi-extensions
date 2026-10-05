@@ -1,4 +1,4 @@
-import { loadConfig, resolveCompactAfterTokens, type Config } from "../config.js";
+import { loadConfig, resolveCompactionPolicy, type Config } from "../config.js";
 import { compactionProgress } from "../hooks/compaction-trigger.js";
 import { readEnabledFromLedger, sumCostEntries, type CostTotal } from "../runtime.js";
 import {
@@ -21,7 +21,7 @@ export type MemorySnapshot = {
 
 export type SnapshotCtx = {
 	cwd?: string;
-	model?: { contextWindow?: number };
+	model?: { provider?: string; contextWindow?: number };
 	getContextUsage?: () => { tokens: number | null; contextWindow?: number } | undefined;
 	sessionManager?: { getBranch?: () => unknown; getEntries?: () => unknown };
 };
@@ -62,7 +62,7 @@ export function memorySnapshot(ctx: SnapshotCtx): MemorySnapshot {
 		bars: [
 			{ label: "obs", current: stageProgress(branch, OM_OBSERVATIONS_RECORDED, rawTokensSinceObservationCoverage, live), total: config.observeAfterTokens },
 			{ label: "ref", current: stageProgress(branch, OM_REFLECTIONS_RECORDED, rawTokensSinceReflectionCoverage, live), total: config.reflectAfterTokens },
-			{ label: "cmp", current: compactionProgress(branch, live), total: resolveCompactAfterTokens(config, usage?.contextWindow, ctx.model?.contextWindow) },
+			{ label: "cmp", current: compactionProgress(branch, live), total: resolveCompactionPolicy(config, ctx.model, usage?.contextWindow).threshold },
 		],
 		cost: sumCostEntries(all),
 	};

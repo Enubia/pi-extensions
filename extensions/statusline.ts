@@ -67,7 +67,7 @@ function memorySnapshot(ctx: SessionContext, module: OmSnapshotModule): MemorySn
 	const last = entries[entries.length - 1];
 	const usage = ctx.getContextUsage?.();
 	const tokens = usage?.tokens ?? "";
-	const key = `${entries.length}:${last?.id ?? ""}:${tokens}:${usage?.contextWindow ?? ""}:${ctx.model?.contextWindow ?? ""}`;
+	const key = `${ctx.cwd ?? ""}:${entries.length}:${last?.id ?? ""}:${tokens}:${usage?.contextWindow ?? ""}:${ctx.model?.contextWindow ?? ""}:${ctx.model?.provider ?? ""}:${ctx.model?.id ?? ""}:${ctx.sessionManager?.getSessionId?.() ?? ""}`;
 	if (cachedMemorySnapshot?.key === key) return cachedMemorySnapshot.snapshot;
 	const snapshot = module.memorySnapshot(ctx);
 	cachedMemorySnapshot = { key, snapshot };

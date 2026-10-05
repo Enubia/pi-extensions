@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerControlCommands } from "./commands/control.js";
+import { registerFactorCommand } from "./commands/factor.js";
 import { registerModelCommand } from "./commands/model.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerViewCommand } from "./commands/view.js";
@@ -27,5 +28,6 @@ export default function observationalMemory(pi: ExtensionAPI) {
 	registerViewCommand(pi, runtime);
 	registerControlCommands(pi, runtime);
 	registerModelCommand(pi, runtime);
+	registerFactorCommand(pi);
 	registerRecallTool(pi);
 }

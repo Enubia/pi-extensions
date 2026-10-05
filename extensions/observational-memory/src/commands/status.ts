@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { observationPoolMetrics } from "../agents/dropper/pool.js";
-import { resolveCompactAfterTokens } from "../config.js";
+import { resolveCompactionPolicy } from "../config.js";
 import { compactionProgress as getCompactionProgress } from "../hooks/compaction-trigger.js";
 import type { Runtime } from "../runtime.js";
 import { stageProgress } from "../status/snapshot.js";
@@ -67,7 +67,7 @@ export function registerStatusCommand(pi: ExtensionAPI, runtime: Runtime): void 
 			const obsProgress = stageProgress(entries, OM_OBSERVATIONS_RECORDED, rawTokensSinceObservationCoverage, liveTokens);
 			const reflectionProgress = stageProgress(entries, OM_REFLECTIONS_RECORDED, rawTokensSinceReflectionCoverage, liveTokens);
 			const compactionProgress = getCompactionProgress(entries, liveTokens);
-			const compactThreshold = resolveCompactAfterTokens(runtime.config, usage?.contextWindow, ctx.model?.contextWindow);
+			const compactThreshold = resolveCompactionPolicy(runtime.config, ctx.model, usage?.contextWindow).threshold;
 
 			const modeLines: string[] = [];
 			if (!runtime.enabled) modeLines.push("Off for this session (/om on to enable)");

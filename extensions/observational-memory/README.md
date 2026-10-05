@@ -33,7 +33,7 @@ amosblomqvist's implementation. See `NOTICE`.
 | `/om:compact` | Force a compaction now (idle only, no resume) |
 | `/om:consolidate` | Force observer → reflector → dropper now |
 | `/om:model [provider/model[:thinking] \| clear]` | Pick the worker model (picker when bare); writes `observational-memory.model` and reloads |
-| `/om:factor` | (separate `om-factor` extension) set `compactAfterTokensRatio` |
+| `/om:factor [ratio \| percent \| reset]` | Pick or save a global compaction ratio for the currently selected provider; reset removes only that provider's global override; reloads |
 
 ## Configuration
 
@@ -49,6 +49,27 @@ All elpapi42 keys are unchanged. New:
 }
 ```
 
+### Provider compaction factors
+
+`/om:factor 0.5`, `/om:factor 50%`, and `/om:factor 50` save the same global override across codebases for the exact selected `ctx.model.provider`. Bare invocation opens a picker; `/om:factor reset` removes that provider's global override. These commands change only `compactAfterTokensRatioByProvider`, never scalar defaults or session state. No model-specific settings or routing/provider guesses are used.
+
+```json
+{
+  "observational-memory": {
+    "compactAfterTokensRatioByProvider": {
+      "openai-codex": 0.5,
+      "anthropic": 0.15
+    }
+  }
+}
+```
+
+Map values must be finite numbers strictly between 0 and 1; invalid entries are ignored. Provider IDs match exactly (for example, `openai` differs from `openai-codex`). Resolution is scope-first: project provider ratio → explicit valid project scalar compaction settings → global provider ratio → existing merged scalar defaults. Partial scalar settings retain their previous independent merging; a ratio-only scalar does not enable ratio mode. Existing calibrated mode, ratios and token fallbacks remain unchanged.
+
+Model/provider switches reevaluate the policy without reload. Ratio thresholds prefer the effective context usage window, then the selected model window; unknown windows fall back to `compactAfterTokens`. Trigger, status, footer and picker use the same resolution. The factor measures post-compaction context growth (raw estimate as fallback), not a hard total-context ceiling; Pi's own compaction safeguards remain independent. The command reports global/provider scope and warns when project settings mask the saved override. Manually edited settings still require reload. OM retains its existing direct project-settings reading behavior.
+
+The old standalone `om-factor` entrypoint is a deprecation-only shim. Explicit installations must enable OM and retire the old resource; it does not register commands or automatically load OM. Root package filters must select OM, not the retired factor factory.
+
 ## Data handling and privacy
 
 Workers send conversation chunks and current memory to the selected model/provider for
@@ -62,7 +83,7 @@ when no usable session id is available. Logs include session paths/identifiers, 
 directory and event data, and rotate to a `.1` file at the size limit.
 
 `/om:model` persists the worker model selection in the agent directory's `settings.json`
-and reloads; `/om:factor` similarly persists compaction settings. These settings updates
+and reloads; `/om:factor` persists only the selected provider's global compaction ratio override. These settings updates
 are separate from session memory.
 
 `/om:view` automatically attempts clipboard copying on every valid invocation, including

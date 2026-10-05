@@ -42,6 +42,10 @@ export interface Config {
 	compactAfterTokens: number;
 	compactAfterTokensMode: CompactAfterTokensMode;
 	compactAfterTokensRatio: number;
+	compactAfterTokensRatioByProvider?: Record<string, number>;
+	globalCompactAfterTokensRatioByProvider?: Record<string, number>;
+	projectCompactAfterTokensRatioByProvider?: Record<string, number>;
+	projectCompactionScalarsExplicit?: boolean;
 	tailTokens: number;
 	resumeAfterMidRunCompaction: boolean;
 	observationsPoolMaxTokens: number;
@@ -96,6 +100,46 @@ export function resolveCompactAfterTokens(config: Config, contextWindow: number 
 		return Math.max(1, Math.floor(window * config.compactAfterTokensRatio));
 	}
 	return config.compactAfterTokens;
+}
+
+export type CompactionPolicy = {
+	mode: CompactAfterTokensMode;
+	ratio: number;
+	threshold: number;
+	contextWindow?: number;
+	source: "project-provider" | "project-default" | "global-provider" | "defaults";
+};
+
+export function resolveCompactionPolicy(
+	config: Config,
+	model?: { provider?: string; contextWindow?: number },
+	contextWindow?: number,
+): CompactionPolicy {
+	const provider = model?.provider;
+	const projectRatio = validRatioOrUndefined(provider === undefined ? undefined : config.projectCompactAfterTokensRatioByProvider?.[provider]);
+	const globalRatio = validRatioOrUndefined(provider === undefined ? undefined : (config.globalCompactAfterTokensRatioByProvider ?? config.compactAfterTokensRatioByProvider)?.[provider]);
+	let mode = config.compactAfterTokensMode;
+	let ratio = config.compactAfterTokensRatio;
+	let source: CompactionPolicy["source"] = "defaults";
+	if (projectRatio !== undefined) {
+		mode = "ratio";
+		ratio = projectRatio;
+		source = "project-provider";
+	} else if (config.projectCompactionScalarsExplicit) {
+		source = "project-default";
+	} else if (globalRatio !== undefined) {
+		mode = "ratio";
+		ratio = globalRatio;
+		source = "global-provider";
+	}
+	const window = [contextWindow, model?.contextWindow].find((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
+	return {
+		mode,
+		ratio,
+		threshold: resolveCompactAfterTokens({ ...config, compactAfterTokensMode: mode, compactAfterTokensRatio: ratio }, window),
+		contextWindow: window,
+		source,
+	};
 }
 
 export const THINKING_LEVEL_VALUES: readonly ModelThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -193,6 +237,12 @@ function normalizeModel(value: unknown): ConfiguredModel | undefined {
 	return model;
 }
 
+function normalizeProviderRatios(value: unknown): Record<string, number> | undefined {
+	if (!isRecord(value) || Array.isArray(value)) return undefined;
+	const entries = Object.entries(value).filter(([provider, ratio]) => provider.trim().length > 0 && validRatioOrUndefined(ratio) !== undefined);
+	return Object.fromEntries(entries) as Record<string, number>;
+}
+
 function normalizeSettingsConfig(value: Record<string, unknown>): Partial<Config> {
 	const normalized: Partial<Config> = {};
 	const numberKeys = [
@@ -215,6 +265,8 @@ function normalizeSettingsConfig(value: Record<string, unknown>): Partial<Config
 	}
 	const ratio = validRatioOrUndefined(value.compactAfterTokensRatio);
 	if (ratio !== undefined) normalized.compactAfterTokensRatio = ratio;
+	const providerRatios = normalizeProviderRatios(value.compactAfterTokensRatioByProvider);
+	if (providerRatios !== undefined) normalized.compactAfterTokensRatioByProvider = providerRatios;
 	if (typeof value.showWorkerNotifications === "boolean") normalized.showWorkerNotifications = value.showWorkerNotifications;
 	if (typeof value.resumeAfterMidRunCompaction === "boolean") normalized.resumeAfterMidRunCompaction = value.resumeAfterMidRunCompaction;
 	if (typeof value.passive === "boolean") normalized.passive = value.passive;
@@ -236,7 +288,7 @@ export function readEnvConfig(env: NodeJS.ProcessEnv = process.env): Partial<Con
 function readNamespacedConfig(path: string): Partial<Config> {
 	if (!existsSync(path)) return {};
 	try {
-		const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+		const raw = JSON.parse(readFileSync(path, "utf-8").replace(/^\uFEFF/, "")) as Record<string, unknown>;
 		const nested = raw[SETTINGS_KEY];
 		return isRecord(nested) ? normalizeSettingsConfig(nested) : {};
 	} catch {
@@ -265,5 +317,10 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): C
 	return {
 		...merged,
 		observationsPoolTargetTokens: target,
+		globalCompactAfterTokensRatioByProvider: globalConfig.compactAfterTokensRatioByProvider,
+		projectCompactAfterTokensRatioByProvider: projectConfig.compactAfterTokensRatioByProvider,
+		projectCompactionScalarsExplicit: projectConfig.compactAfterTokens !== undefined
+			|| projectConfig.compactAfterTokensMode !== undefined
+			|| projectConfig.compactAfterTokensRatio !== undefined,
 	};
 }

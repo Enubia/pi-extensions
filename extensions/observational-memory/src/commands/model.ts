@@ -1,10 +1,10 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai/compat";
 import { THINKING_LEVEL_VALUES, type ConfiguredModel } from "../config.js";
 import type { Runtime } from "../runtime.js";
+import { updateSettingsFile } from "../settings.js";
 
 const SETTINGS_KEY = "observational-memory";
 const THINKING_LEVELS = THINKING_LEVEL_VALUES;
@@ -49,16 +49,6 @@ export function describeModel(model: ConfiguredModel | undefined): string {
 
 function settingsPath(): string {
 	return join(getAgentDir(), "settings.json");
-}
-
-function readSettingsFile(path: string): string {
-	return existsSync(path) ? readFileSync(path, "utf-8") : "";
-}
-
-function writeSettingsFile(path: string, contents: string): void {
-	const temp = `${path}.om-model.tmp`;
-	writeFileSync(temp, contents, "utf-8");
-	renameSync(temp, path);
 }
 
 type RegistryModel = { provider: string; id: string; reasoning?: boolean };
@@ -112,7 +102,7 @@ export function registerModelCommand(pi: ExtensionAPI, runtime: Runtime): void {
 
 			const path = settingsPath();
 			try {
-				writeSettingsFile(path, patchModelSettings(readSettingsFile(path), model));
+				updateSettingsFile(path, raw => patchModelSettings(raw, model));
 			} catch (error) {
 				ctx.ui.notify(`/om:model: failed to write ${path}: ${error instanceof Error ? error.message : String(error)}`, "error");
 				return;

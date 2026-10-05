@@ -16,24 +16,28 @@ export function parseFactor(input: string): ParseResult {
 	if (!Number.isFinite(numeric)) return { ok: false, error: `"${raw}" is not a number` };
 	const ratio = percent || numeric > 1 ? numeric / 100 : numeric;
 	if (!(ratio > 0 && ratio < 1)) return { ok: false, error: `factor must be between 0 and 1 (got ${ratio})` };
-	return { ok: true, ratio: Math.round(ratio * 10_000) / 10_000 };
+	return { ok: true, ratio };
 }
 
-export function readRatio(settings: unknown): { mode?: string; ratio?: number; compactAfterTokens?: number } {
-	const nested = record(record(settings)?.[SETTINGS_KEY]);
-	const mode = typeof nested?.compactAfterTokensMode === "string" ? nested.compactAfterTokensMode : undefined;
-	const ratio = typeof nested?.compactAfterTokensRatio === "number" ? nested.compactAfterTokensRatio : undefined;
-	const compactAfterTokens = typeof nested?.compactAfterTokens === "number" ? nested.compactAfterTokens : undefined;
-	return { mode, ratio, compactAfterTokens };
-}
-
-export function patchSettings(rawFile: string, ratio: number): string {
+export function patchSettings(rawFile: string, provider: string, ratio: number | undefined): string {
+	if (!provider.trim()) throw new Error("provider is required");
+	if (ratio !== undefined && !(Number.isFinite(ratio) && ratio > 0 && ratio < 1)) {
+		throw new Error("factor must be between 0 and 1");
+	}
 	const parsed = rawFile.trim().length === 0 ? {} : (JSON.parse(rawFile.replace(/^\uFEFF/, "")) as unknown);
 	const settings = record(parsed);
 	if (!settings) throw new Error("settings.json does not contain a JSON object");
-	const nested = { ...(record(settings[SETTINGS_KEY]) ?? {}) };
-	nested.compactAfterTokensMode = "ratio";
-	nested.compactAfterTokensRatio = ratio;
+	if (settings[SETTINGS_KEY] !== undefined && !record(settings[SETTINGS_KEY])) {
+		throw new Error("observational-memory settings must be an object");
+	}
+	const nested = { ...record(settings[SETTINGS_KEY]) };
+	const existing = nested.compactAfterTokensRatioByProvider;
+	if (existing !== undefined && !record(existing)) throw new Error("provider factors must be an object");
+	const ratios = { ...record(existing) };
+	if (ratio === undefined) delete ratios[provider];
+	else Object.defineProperty(ratios, provider, { value: ratio, enumerable: true, configurable: true, writable: true });
+	if (Object.keys(ratios).length > 0) nested.compactAfterTokensRatioByProvider = ratios;
+	else delete nested.compactAfterTokensRatioByProvider;
 	return `${JSON.stringify({ ...settings, [SETTINGS_KEY]: nested }, null, 2)}\n`;
 }
 
