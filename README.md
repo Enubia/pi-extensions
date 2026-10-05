@@ -31,9 +31,9 @@ npm run typecheck
 npm run typecheck:memory
 ```
 
-All tests, fixtures and test-only helpers live under `test/`. The Node runner includes package-contract tests and excludes the six observational-memory Vitest suites. Test commands automatically use disposable HOME/agent directories, clear inherited credentials and disable automatic Pi network activity. Default tests resolve local development dependencies; global Pi is not required. Canonical `pi-ai/compat` imports preserve the extension API semantics. `tsconfig.json` provides editor module resolution; both root and memory typechecks must pass.
+All tests, fixtures and test-only helpers live under `test/`. The Node runner excludes the six observational-memory Vitest suites. Test commands automatically use disposable HOME/agent directories, clear inherited credentials and disable automatic Pi network activity. Default tests resolve local development dependencies; global Pi is not required. Canonical `pi-ai/compat` imports preserve the extension API semantics. `tsconfig.json` provides editor module resolution; both root and memory typechecks must pass.
 
-Pi development dependencies are pinned to 1.0.2, which updates `brace-expansion` to 5.0.12 and resolves the previously deferred denial-of-service advisories (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p). Both `npm audit` and `npm audit --omit=dev` report zero vulnerabilities. The upgrade used an explicitly authorized, one-command release-age exception; global npm policy remains unchanged, and no dependency override is applied. Runtime `shell-quote` remains patched at 1.12.0.
+Pi development dependencies are pinned to 1.0.3. Compatibility checks against the 1.0.3 host passed without extension changes, including loading all eleven factories. `brace-expansion` remains patched at 5.0.12, resolving the previously deferred denial-of-service advisories (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p). Both `npm audit` and `npm audit --omit=dev` report zero vulnerabilities. The upgrade used an explicitly authorized, one-command release-age exception; global npm policy remains unchanged, and no dependency override is applied. Runtime `shell-quote` remains patched at 1.12.0.
 
 To verify a clean root-only production installation and package loading against an installed Pi host:
 
