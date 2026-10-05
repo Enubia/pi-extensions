@@ -11,9 +11,10 @@ spawns follow the new provider automatically.
 ## Behaviour
 
 1. `after_provider_response` records the last HTTP status and headers.
-2. An assistant message ending with `stopReason: "error"` is classified: `quota` (429, usage/billing
-   wording), `transient` (5xx, 529, overloaded, network), `unavailable` (404, unknown model), or `ignore`
-   (aborts, context overflow — never triggers a switch).
+2. Assistant errors are remembered until `agent_before_settle`, after Pi's native retries and recovery
+   finish. Successful retries and cancellations never trigger a switch. An unresolved error on the same
+   selected model is classified: `quota` (429, usage/billing wording), `transient` (5xx, 529, overloaded,
+   capacity, network), `unavailable` (404, unknown model), or `ignore` (aborts, context overflow).
 3. The failing provider gets a cooldown: the reset time from `retry-after` /
    `anthropic-ratelimit-*-reset` / `x-ratelimit-reset-*` / `x-codex-*-reset-after-seconds` headers when
    available, otherwise `defaultCooldownMinutes` (15).
@@ -54,5 +55,5 @@ Optional `"provider-failover"` block in `~/.pi/agent/settings.json` (or project 
 ## Tests
 
 ```bash
-node test/support/run-tests.mjs test/provider-failover/core.test.ts
+node test/support/run-isolated.mjs node test/support/run-tests.mjs test/provider-failover/core.test.ts test/provider-failover/runtime.test.ts
 ```

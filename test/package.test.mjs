@@ -55,16 +55,17 @@ test("the install graph keeps patched shell-quote and confines brace-expansion t
 	const runtime = Object.entries(lock.packages).filter(([path, pkg]) => path && !pkg.dev).map(([path]) => path);
 	assert.deepEqual(runtime, ["node_modules/shell-quote"]);
 	const bracePackages = Object.entries(lock.packages).filter(([path]) => path.endsWith("/brace-expansion"));
-	assert.deepEqual(bracePackages.map(([path]) => path), ["node_modules/@earendil-works/pi-coding-agent/node_modules/brace-expansion"]);
+	assert.equal(bracePackages.length, 1);
 	for (const [path, pkg] of bracePackages) {
+		assert.equal(pkg.version, "5.0.12", path);
 		assert.equal(pkg.dev, true, path);
 	}
 	const hostPath = "node_modules/@earendil-works/pi-coding-agent";
 	assert.equal(lock.packages[hostPath].dev, true);
 	assert.ok(lock.packages[hostPath].dependencies.minimatch);
-	assert.ok(lock.packages[`${hostPath}/node_modules/minimatch`].dependencies["brace-expansion"]);
+	assert.equal(lock.packages[hostPath].dependencies["brace-expansion"], "5.0.12");
 	for (const name of Object.keys(manifest().peerDependencies)) {
-		assert.equal(lock.packages[`node_modules/${name}`].version, name === "typebox" ? "1.3.27" : "1.0.0");
+		assert.equal(lock.packages[`node_modules/${name}`].version, name === "typebox" ? "1.3.27" : "1.0.2");
 		assert.equal(lock.packages[`node_modules/${name}`].dev, true);
 	}
 });
@@ -78,7 +79,8 @@ test("the Node runner discovers centralized suites without mixing in Vitest", ()
 	assert.ok(files.includes("test/support/host-modules.test.ts"));
 	assert.ok(files.includes("test/lsp/manager.test.ts"));
 	assert.ok(files.includes("test/lsp/typescript.integration.test.ts"));
-	assert.equal(files.filter(file => file.endsWith(".test.ts")).length, 24);
+	assert.ok(files.includes("test/provider-failover/runtime.test.ts"));
+	assert.equal(files.filter(file => file.endsWith(".test.ts")).length, 26);
 	assert.equal(files.some(file => file.startsWith("test/observational-memory/")), false);
 });
 

@@ -96,6 +96,7 @@ export default function providerFailover(pi: ExtensionAPI) {
 
 	let state = loadState();
 	let lastResponse: { status: number; headers: Record<string, string>; at: number } | undefined;
+	let pendingFailure: { model: ModelRef; message: string | undefined } | undefined;
 	let switching = false;
 
 	const setStatus = (ctx: ExtensionContext) => {
@@ -209,12 +210,24 @@ export default function providerFailover(pi: ExtensionAPI) {
 	});
 
 	pi.on("message_end", async (event, ctx) => {
-		const message = event.message as { role?: string; stopReason?: string; errorMessage?: string };
-		if (message.role !== "assistant" || message.stopReason !== "error") return;
-		await handleFailure(ctx, message.errorMessage);
+		const message = event.message;
+		if (message.role !== "assistant") return;
+		const model = currentRef(ctx);
+		pendingFailure = message.stopReason === "error" && model ? { model, message: message.errorMessage } : undefined;
+	});
+
+	pi.on("agent_before_settle", async (event, ctx) => {
+		const failure = pendingFailure;
+		pendingFailure = undefined;
+		if (!failure || event.outcome !== "error") return;
+		const current = currentRef(ctx);
+		if (current?.provider !== failure.model.provider || current.id !== failure.model.id) return;
+		await handleFailure(ctx, failure.message);
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		pendingFailure = undefined;
+		lastResponse = undefined;
 		state = pruneCooldowns(loadState(), Date.now());
 		setStatus(ctx);
 		await restoreIfPossible(ctx);
