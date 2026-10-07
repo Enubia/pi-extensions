@@ -99,8 +99,9 @@ export function registerCompactionHook(pi: ExtensionAPI, runtime: Runtime): void
 
 			const projection = buildCompactionProjection(branch, snap.firstKeptId, {
 				observationsPoolMaxTokens: runtime.config.observationsPoolMaxTokens,
+				carryCurrentTask: snap.tail !== undefined,
 			});
-			const summary = renderSummary(projection.reflections, projection.observations);
+			const summary = renderSummary(projection.reflections, projection.observations, projection.currentTask);
 			if (summary.length === 0) return undefined;
 
 			return {

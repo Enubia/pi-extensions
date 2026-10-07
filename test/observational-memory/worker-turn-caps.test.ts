@@ -14,7 +14,7 @@ type ToolCall = Extract<AssistantMessage["content"][number], { type: "toolCall" 
 const workers = [
 	{
 		name: "observer",
-		run: (options: Options) => runObserver({ model, priorReflections: [], priorObservations: [], chunk: "[Source entry id: entry-1] Synthetic facts.", allowedSourceEntryIds: ["entry-1"], ...options }),
+		run: (options: Options) => runObserver({ model, priorReflections: [], priorObservations: [], chunk: "[Source entry id: entry-1] Synthetic facts.", allowedSourceEntryIds: ["entry-1"], ...options }).then((result) => result?.observations),
 		call: (seed: number, valid = true): ToolCall => ({ type: "toolCall", id: `call-${seed}`, name: "record_observations", arguments: { observations: [{ timestamp: "2030-01-01 10:00", content: `Synthetic fact ${seed}.`, relevance: "medium", sourceEntryIds: [valid ? "entry-1" : "missing"] }] } }),
 		result: (seeds: number[]) => seeds.map((seed) => ({ content: `Synthetic fact ${seed}.`, sourceEntryIds: ["entry-1"] })),
 	},

@@ -1,4 +1,4 @@
-import type { Observation, Reflection } from "./types.js";
+import type { CurrentTask, Observation, Reflection } from "./types.js";
 
 const CONTEXT_USAGE_INSTRUCTIONS = `These are condensed memories from earlier in this session.
 
@@ -17,7 +17,7 @@ export function reflectionToSummaryLine(reflection: Reflection): string {
 	return `[${reflection.id}] ${reflection.content}`;
 }
 
-export function renderSummary(reflections: Reflection[], observations: Observation[]): string {
+export function renderSummary(reflections: Reflection[], observations: Observation[], currentTask?: CurrentTask): string {
 	if (reflections.length === 0 && observations.length === 0) return "";
 
 	const parts: string[] = [CONTEXT_USAGE_INSTRUCTIONS];
@@ -26,6 +26,9 @@ export function renderSummary(reflections: Reflection[], observations: Observati
 	}
 	if (observations.length > 0) {
 		parts.push(`## Observations\n${observations.map(observationToSummaryLine).join("\n")}`);
+	}
+	if (currentTask) {
+		parts.push(`## Current task (as of ${currentTask.timestamp})\n${currentTask.content}`);
 	}
 	return parts.join("\n\n");
 }

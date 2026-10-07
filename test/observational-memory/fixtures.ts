@@ -64,8 +64,13 @@ export function observation(seed: number, sourceEntryIds: string[], content = `o
 	};
 }
 
-export function observationsRecordedEntry(observations: Observation[], coversUpToId: string, id = nextId("om")): Entry {
-	return { type: "custom", id, customType: OM_OBSERVATIONS_RECORDED, data: { observations, coversUpToId } };
+export function observationsRecordedEntry(
+	observations: Observation[],
+	coversUpToId: string,
+	id = nextId("om"),
+	currentTask?: { content: string; timestamp: string },
+): Entry {
+	return { type: "custom", id, customType: OM_OBSERVATIONS_RECORDED, data: { observations, coversUpToId, ...(currentTask ? { currentTask } : {}) } };
 }
 
 export function reflection(seed: number, supportingObservationIds: string[], supersedesReflectionIds?: string[], content = `reflection ${seed}`): Reflection {

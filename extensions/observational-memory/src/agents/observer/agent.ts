@@ -10,7 +10,7 @@ import { AGENT_LOOP_MAX_TOKENS, boundedMaxTokens } from "../../model-budget.js";
 import { OBSERVER_SYSTEM } from "./prompts.js";
 import { priorObservationsOmittedLine } from "./prior-context.js";
 import { nowTimestamp, truncateRecordContent } from "../../serialize.js";
-import type { Observation, Relevance } from "../../session-ledger/index.js";
+import type { CurrentTask, Observation, Relevance } from "../../session-ledger/index.js";
 import { observationLineTokenCount } from "../../tokens.js";
 
 interface RunObserverArgs {
@@ -67,9 +67,27 @@ const RecordObservationsSchema = Type.Object({
 		}),
 		{ description: "Batch of new observations. May be empty only if the tool is not called at all." },
 	),
+	currentTask: Type.Optional(
+		Type.String({
+			description:
+				"One line: the active goal and the immediate next step as of the end of the chunk. " +
+				"Omit when no task is in progress.",
+		}),
+	),
 });
 
 type RecordObservationsArgs = Static<typeof RecordObservationsSchema>;
+
+export type ObserverResult = {
+	observations: Observation[];
+	currentTask?: CurrentTask;
+};
+
+function normalizeCurrentTask(value: string | undefined): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const singleLine = value.replace(/\s+/g, " ").trim();
+	return singleLine ? truncateRecordContent(singleLine) : undefined;
+}
 
 /**
  * Thrown when the agent loop ends with an API/stream failure (`stopReason`
@@ -105,7 +123,7 @@ export function normalizeSourceEntryIds(
 	return Array.from(seen).sort((a, b) => (allowedOrder.get(a) ?? 0) - (allowedOrder.get(b) ?? 0));
 }
 
-export async function runObserver(args: RunObserverArgs): Promise<Observation[] | undefined> {
+export async function runObserver(args: RunObserverArgs): Promise<ObserverResult | undefined> {
 	const { model, apiKey, headers, env, priorReflections, priorObservations, chunk, allowedSourceEntryIds, signal } = args;
 	const conversation = chunk.trim();
 	if (!conversation) return undefined;
@@ -113,6 +131,7 @@ export async function runObserver(args: RunObserverArgs): Promise<Observation[] 
 	const observationLines = omitted > 0 ? [priorObservationsOmittedLine(omitted), ...priorObservations] : priorObservations;
 
 	const accumulated = new Map<string, Observation>();
+	let currentTask: CurrentTask | undefined;
 
 	const recordObservations: AgentTool<typeof RecordObservationsSchema> = {
 		name: "record_observations",
@@ -123,6 +142,8 @@ export async function runObserver(args: RunObserverArgs): Promise<Observation[] 
 			"then emit a short plain-text confirmation to end the run.",
 		parameters: RecordObservationsSchema,
 		execute: async (_id, params: RecordObservationsArgs) => {
+			const hint = normalizeCurrentTask(params.currentTask);
+			if (hint) currentTask = { content: hint, timestamp: nowTimestamp() };
 			let added = 0;
 			let duplicates = 0;
 			let rejected = 0;
@@ -243,5 +264,5 @@ ${conversation}`;
 		if (streamError) throw new ObserverStreamError(streamError.stopReason, streamError.errorMessage);
 		return undefined;
 	}
-	return Array.from(accumulated.values());
+	return { observations: Array.from(accumulated.values()), ...(currentTask ? { currentTask } : {}) };
 }

@@ -15,3 +15,6 @@ LICENSE retains Copyright (c) 2026 pi-observational-memory contributors
 from elpapi42/pi-observational-memory at tag 3.1.3 and restores
 Copyright (c) 2026 Amos Blomqvist from amosblomqvist/pi-observational-memory
 at commit 78a1efc. Both upstream sources use the MIT terms retained in LICENSE.
+
+Divergence: the observer prompt and record_observations tool differ from upstream 3.1.3
+by an optional currentTask hint (active goal and next step) carried through compaction.

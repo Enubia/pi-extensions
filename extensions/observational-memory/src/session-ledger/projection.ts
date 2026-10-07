@@ -4,11 +4,13 @@ import {
 	isObservationsDroppedEntry,
 	isObservationsRecordedEntry,
 	isReflectionsRecordedEntry,
+	type CurrentTask,
 	type Entry,
 	type MemoryDetails,
 	type Observation,
 	type Reflection,
 } from "./types.js";
+import { isSourceEntry } from "./progress.js";
 import { supersededReflectionIds } from "./supersede.js";
 
 export type Projection = {
@@ -24,10 +26,12 @@ export type ProjectionDiff = {
 
 export type CompactionProjectionConfig = {
 	observationsPoolMaxTokens: number;
+	carryCurrentTask?: boolean;
 };
 
 export type CompactionProjection = Projection & {
 	fullFold: boolean;
+	currentTask?: CurrentTask;
 	details: MemoryDetails;
 };
 
@@ -159,6 +163,15 @@ export function visibleProjection(entries: Entry[], upToEntryId?: string): Proje
 	return buildCompactionProjection(entries, upToEntryId, { observationsPoolMaxTokens: Number.POSITIVE_INFINITY });
 }
 
+export function latestCompactionCurrentTask(entries: Entry[]): CurrentTask | undefined {
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		if (entry.type !== "compaction") continue;
+		return isMemoryDetails(entry.details) ? entry.details.currentTask : undefined;
+	}
+	return undefined;
+}
+
 export function latestFullFoldBoundaryId(entries: Entry[]): string | undefined {
 	const indexes = entryIndexById(entries);
 	for (let i = entries.length - 1; i >= 0; i--) {
@@ -169,6 +182,21 @@ export function latestFullFoldBoundaryId(entries: Entry[]): string | undefined {
 		if (!entry.firstKeptEntryId) continue;
 		if (!indexes.has(entry.firstKeptEntryId)) continue;
 		return entry.firstKeptEntryId;
+	}
+	return undefined;
+}
+
+function boundaryCurrentTask(entries: Entry[], firstKeptEntryId: string): CurrentTask | undefined {
+	const indexes = entryIndexById(entries);
+	const firstKeptIndex = indexes.get(firstKeptEntryId);
+	if (firstKeptIndex === undefined) return undefined;
+	let boundaryIndex = firstKeptIndex - 1;
+	while (boundaryIndex >= 0 && !isSourceEntry(entries[boundaryIndex])) boundaryIndex--;
+	if (boundaryIndex < 0) return undefined;
+	const boundaryId = entries[boundaryIndex].id;
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		if (isObservationsRecordedEntry(entry) && entry.data.coversUpToId === boundaryId) return entry.data.currentTask;
 	}
 	return undefined;
 }
@@ -194,16 +222,20 @@ export function buildCompactionProjection(
 		? fullProjection(entries, firstKeptEntryId)
 		: normalProjection;
 
+	const currentTask = config.carryCurrentTask === false ? undefined : boundaryCurrentTask(entries, firstKeptEntryId);
+
 	const details: MemoryDetails = {
 		type: OM_FOLDED,
 		version: 1,
 		fullFold,
 		observations: projection.observations,
 		reflections: projection.reflections,
+		...(currentTask ? { currentTask } : {}),
 	};
 
 	return {
 		fullFold,
+		...(currentTask ? { currentTask } : {}),
 		observations: projection.observations,
 		reflections: projection.reflections,
 		details,

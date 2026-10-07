@@ -3,7 +3,7 @@ import { runDropper } from "../agents/dropper/agent.js";
 import { observationPoolMetrics } from "../agents/dropper/pool.js";
 import { runMerger } from "../agents/merger/agent.js";
 import { reflectionPoolMetrics } from "../agents/merger/pool.js";
-import { ObserverStreamError, runObserver } from "../agents/observer/agent.js";
+import { ObserverStreamError, runObserver, type ObserverResult } from "../agents/observer/agent.js";
 import { selectPriorObservations } from "../agents/observer/prior-context.js";
 import { runReflector } from "../agents/reflector/agent.js";
 import { withRetries, type RetryOptions } from "../agents/retry.js";
@@ -33,7 +33,6 @@ import {
 	supersededReflectionIds,
 	type CostEntryData,
 	type Entry,
-	type Observation,
 	type Reflection,
 	type V3MemoryCustomType,
 } from "../session-ledger/index.js";
@@ -420,9 +419,9 @@ async function runObserverStage(
 		priorObservationsOmitted,
 	});
 
-	let observations: Observation[] | undefined;
+	let observerResult: ObserverResult | undefined;
 	try {
-		observations = await withRetries(() => runObserver({
+		observerResult = await withRetries(() => runObserver({
 			model: resolved.model as any,
 			apiKey: resolved.apiKey,
 			headers: resolved.headers,
@@ -447,6 +446,7 @@ async function runObserverStage(
 		}
 		throw error;
 	}
+	const observations = observerResult?.observations;
 	if (!observations || observations.length === 0) {
 		// Deliberate empty: routine info, not a warning, and back off re-fires
 		// over the same span (#23).
@@ -460,7 +460,7 @@ async function runObserverStage(
 	}
 	runtime.observerEmptyBackoff = undefined;
 
-	const data = buildObservationsRecordedData(observations, coversUpToId);
+	const data = buildObservationsRecordedData(observations, coversUpToId, observerResult?.currentTask);
 	if (!data) return "continue";
 	debugLog("observer.records", {
 		count: observations.length,

@@ -15,6 +15,10 @@ amosblomqvist's implementation. See `NOTICE`.
 - **Cutoff snapping**: the verbatim tail starts at an observation-chunk boundary closest to
   `tailTokens`, so nothing is both summarised and kept, and nothing is dropped. Falls back to
   pi's proposal when no boundary qualifies.
+- **Current-task hint**: the observer may attach a one-line `currentTask` (active goal + next step)
+  to an observations entry. When the snapped cut lands on that entry's boundary, the summary gets a
+  `## Current task` section and the auto-resume prompt points at it; no boundary entry hint, no section.
+  The observer prompt diverges from upstream 3.1.3 for this field.
 - **Fold waits for workers**: `session_before_compact` awaits an in-flight consolidation and
   re-reads the branch so just-recorded observations land in the block.
 - **`recall(<id>)`** tool recovers the raw source entries behind any observation/reflection id.

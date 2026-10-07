@@ -5,6 +5,7 @@ import { debugLog, withDebugLogContext } from "../debug-log.js";
 import type { Runtime } from "../runtime.js";
 import {
 	OM_RESUME,
+	latestCompactionCurrentTask,
 	rawTokensSinceLastCompaction,
 	realTokensSinceAnchor,
 	type Entry,
@@ -13,6 +14,9 @@ import {
 export const RESUME_PROMPT =
 	"[automatic] Your context was just compacted to free space; no user message was sent. "
 	+ "Continue exactly where you left off, as if the compaction had not happened.";
+
+export const RESUME_PROMPT_WITH_TASK =
+	`${RESUME_PROMPT} The current task and its next step are stated under "## Current task" in your memory; continue that task.`;
 
 type TurnEndLike = {
 	message?: { role?: string; stopReason?: string; errorMessage?: string };
@@ -94,11 +98,20 @@ export function startCompaction(
 		sessionFile: ctx.sessionManager?.getSessionFile?.(),
 	}, () => debugLog(event, data));
 	log("compaction.trigger", { progress, threshold, shouldResume });
-	const resume = () => {
+	const resumeContent = (withHint: boolean): string => {
+		if (!withHint) return RESUME_PROMPT;
+		try {
+			const entries = ctx.sessionManager?.getBranch?.() as Entry[] | undefined;
+			return entries && latestCompactionCurrentTask(entries) ? RESUME_PROMPT_WITH_TASK : RESUME_PROMPT;
+		} catch {
+			return RESUME_PROMPT;
+		}
+	};
+	const resume = (withHint = false) => {
 		if (!shouldResume || !runtime.active) return;
 		try {
 			pi.sendMessage(
-				{ customType: OM_RESUME, content: RESUME_PROMPT, display: false },
+				{ customType: OM_RESUME, content: resumeContent(withHint), display: false },
 				{ triggerTurn: true },
 			);
 			runtime.lastResumeError = undefined;
@@ -122,7 +135,7 @@ export function startCompaction(
 				runtime.autoCompactSuspended = undefined;
 				log("compaction.complete", { shouldResume });
 				if (hasUI) ui?.notify("Observational memory: compaction complete", "info");
-				resume();
+				resume(true);
 			},
 			onError: (error) => {
 				runtime.compactInFlight = false;

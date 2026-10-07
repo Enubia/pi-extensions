@@ -24,6 +24,7 @@ What to emit:
 - Never invent source entry ids. Use only ids printed in the chunk. If an observation spans multiple turns or tool results, include every supporting source entry id.
 - Observations with missing, empty, or invalid sourceEntryIds will be rejected and not recorded, so do not call record_observations until you can cite valid source ids.
 - Group repeated similar tool calls into a single observation rather than one per call.
+- Each record_observations call may also carry currentTask: one plain-prose line stating the active goal and the immediate next step as of the end of the chunk. Include it on your final call when a task is still in progress. Omit it when no task is in progress (the work is finished, or the chunk has no task). Never put it in an observation.
 - Skip routine, low-information events. It is fine to emit zero observations if the chunk carries no new information — in that case, simply do not call the tool and end with a plain-text confirmation.
 
 Observation content rules:

@@ -51,9 +51,15 @@ export type Reflection = {
 	supersedesReflectionIds?: string[];
 };
 
+export type CurrentTask = {
+	content: string;
+	timestamp: string;
+};
+
 export type ObservationsRecordedEntryData = {
 	observations: Observation[];
 	coversUpToId: string;
+	currentTask?: CurrentTask;
 };
 
 export type ReflectionsRecordedEntryData = {
@@ -72,6 +78,7 @@ export type MemoryDetails = {
 	fullFold: boolean;
 	observations: Observation[];
 	reflections: Reflection[];
+	currentTask?: CurrentTask;
 };
 
 export type V3MemoryCustomType =
@@ -127,13 +134,19 @@ export function isReflection(value: unknown): value is Reflection {
 	);
 }
 
+export function isCurrentTask(value: unknown): value is CurrentTask {
+	if (!isPlainRecord(value)) return false;
+	return isNonEmptyString(value.content) && isNonEmptyString(value.timestamp);
+}
+
 export function isObservationsRecordedData(value: unknown): value is ObservationsRecordedEntryData {
 	if (!isPlainRecord(value)) return false;
 	return (
 		Array.isArray(value.observations) &&
 		value.observations.length > 0 &&
 		value.observations.every(isObservation) &&
-		isNonEmptyString(value.coversUpToId)
+		isNonEmptyString(value.coversUpToId) &&
+		(value.currentTask === undefined || isCurrentTask(value.currentTask))
 	);
 }
 
@@ -161,7 +174,8 @@ export function isMemoryDetails(value: unknown): value is MemoryDetails {
 		Array.isArray(value.observations) &&
 		value.observations.every(isObservation) &&
 		Array.isArray(value.reflections) &&
-		value.reflections.every(isReflection)
+		value.reflections.every(isReflection) &&
+		(value.currentTask === undefined || isCurrentTask(value.currentTask))
 	);
 }
 
@@ -192,9 +206,10 @@ export function isObservationsDroppedEntry(entry: Entry): entry is Entry & {
 export function buildObservationsRecordedData(
 	observations: Observation[],
 	coversUpToId: string,
+	currentTask?: CurrentTask,
 ): ObservationsRecordedEntryData | undefined {
 	if (observations.length === 0 || !isNonEmptyString(coversUpToId)) return undefined;
-	return { observations, coversUpToId };
+	return currentTask ? { observations, coversUpToId, currentTask } : { observations, coversUpToId };
 }
 
 export function buildReflectionsRecordedData(
