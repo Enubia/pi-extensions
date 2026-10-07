@@ -12,6 +12,10 @@ amosblomqvist's implementation. See `NOTICE`.
 - **Compaction fires on `turn_end`**, not after the run settles. Progress is provider-reported
   context growth since the last compaction (raw estimate as fallback). A compaction that lands
   mid-run resumes the agent automatically via a hidden message.
+- **Cache-aware timing**: between a soft threshold (`floor(hard × softFraction)`) and the hard one,
+  OM does not compact mid-run; it compacts right before the next request is sent, but only when
+  the provider prompt cache is already cold (idle past the cache lifetime, or a model switch). See
+  `cacheAwareCompaction` below.
 - **Cutoff snapping**: the verbatim tail starts at an observation-chunk boundary closest to
   `tailTokens`, so nothing is both summarised and kept, and nothing is dropped. Falls back to
   pi's proposal when no boundary qualifies.
@@ -60,6 +64,14 @@ All elpapi42 keys are unchanged. New:
 `observerPriorObservationsMaxTokens` (default `4000`, non-negative integer or `false`; negatives, `NaN` and other invalid values fall back to the default) caps the active observations sent to the observer as "do not restate" context. The newest observations whose rendered lines (same estimate as the observation pool) fit the budget are kept, in chronological order, and a first line `(N older observations omitted; only the most recent are shown)` marks the list as partial. `0` sends no observations; `false` sends all of them. Reflections are always sent in full, and the reflector and dropper always see the full active pool. `debugLog` records `priorObservationsOmitted` in `observer.start`.
 
 `reflectionsPoolMaxTokens` (default `8000`) and `reflectionsPoolTargetTokens` (default `4000`) bound the active reflection pool. Non-negative integers only; invalid values fall back to the default, and a target above the max resets both to defaults. When the active reflection lines reach the max after the reflector stage, the merger (same model and thinking level as the reflector) consolidates overlapping reflections until the projected pool is at or below the target. Merged reflections list the ids they replace in `supersedesReflectionIds` and carry the union of their supporting observations. Superseded reflections leave active memory, `/om:view full` and compaction summaries but stay resolvable via recall (`superseded by <id>`). `/om:status` shows the active pool against max and target.
+
+`cacheAwareCompaction` (default `{ "enabled": true, "softFraction": 0.6, "idle": "auto", "onModelChange": true }`) avoids paying for a cold prompt cache twice. The hard threshold is the existing resolved compaction threshold and behaves exactly as before (including mid-run compaction and resume). The soft threshold is `floor(hard × softFraction)`. When progress is at or above soft and a cold signal is set, OM compacts in a `before_agent_start` handler, which Pi awaits before building and sending the request, so the user's prompt and attachments are untouched and no resume message is sent. Cold signals:
+
+- `idle`: time since the last assistant message (or the last `cache_warming_decision`) exceeds the window. `"auto"` uses the active model's declared `promptCache.short` lifetime; a model without one never triggers the idle path. A number is an explicit window in seconds (also used when the model declares no lifetime); `false` disables the idle signal.
+- `onModelChange`: a `model_select` whose provider or id differs from the previous model flags the next request. A switch to a smaller window is not forced below soft; the hard threshold is recomputed from the new window as usual.
+- Pi cache warming: each `cache_warming_decision` restarts the idle clock, so a cache Pi is still warming is not cold, and after warming stops the cache is treated as expiring one window later. While `idle` is not `false` and progress is at or above soft, OM answers `stop` to `cache_warming_decision` so a context about to be compacted is not warmed.
+
+`softFraction` must be strictly between 0 and 1. Each invalid sub-field falls back to its default independently; a non-object value is ignored, and a project object replaces the global one. `enabled: false` leaves the trigger byte-for-byte as before. The pre-request compaction shares the `compactInFlight` guard with the `turn_end` trigger and is skipped while auto-compaction is suspended, in passive mode or without UI. `/om:status` shows soft/hard thresholds and the last cold signal.
 
 ### Provider compaction factors
 

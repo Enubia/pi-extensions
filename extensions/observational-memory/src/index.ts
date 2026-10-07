@@ -4,6 +4,7 @@ import { registerFactorCommand } from "./commands/factor.js";
 import { registerModelCommand } from "./commands/model.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerViewCommand } from "./commands/view.js";
+import { registerCacheAwareCompaction } from "./hooks/cache-aware-compaction.js";
 import { registerCompactionHook } from "./hooks/compaction-hook.js";
 import { registerCompactionTrigger } from "./hooks/compaction-trigger.js";
 import { registerConsolidationTrigger } from "./hooks/consolidation-trigger.js";
@@ -18,10 +19,14 @@ export default function observationalMemory(pi: ExtensionAPI) {
 		runtime.ensureConfig(ctx.cwd);
 		runtime.enabled = readEnabledFromLedger(ctx.sessionManager.getBranch() as Entry[]);
 		runtime.refreshCost(ctx.sessionManager.getEntries() as Entry[]);
+		runtime.cacheColdReason = undefined;
+		runtime.cacheLastWarmAt = undefined;
+		runtime.lastColdSignal = undefined;
 	});
 
 	registerConsolidationTrigger(pi, runtime);
 	registerCompactionTrigger(pi, runtime);
+	registerCacheAwareCompaction(pi, runtime);
 	registerCompactionHook(pi, runtime);
 
 	registerStatusCommand(pi, runtime);

@@ -78,6 +78,7 @@ const AVAILABILITY_RECHECK_REARM_MS = 60_000;
 
 type NotifyLevel = "warning" | "info" | "error";
 type Notify = (message: string, type?: NotifyLevel) => void;
+export type CacheColdReason = "idle" | "model-change";
 export type ConsolidationPhase = "observer" | "reflector" | "merger" | "dropper";
 
 /**
@@ -136,6 +137,9 @@ export class Runtime {
 	consolidationPromise: Promise<void> | null = null;
 	consolidationPhase: ConsolidationPhase | undefined;
 	compactInFlight = false;
+	cacheColdReason: CacheColdReason | undefined;
+	lastColdSignal: { reason: CacheColdReason; at: number } | undefined;
+	cacheLastWarmAt: number | undefined;
 	compactHookInFlight = false;
 	resolveFailureNotified = false;
 	lastObserverError: string | undefined;

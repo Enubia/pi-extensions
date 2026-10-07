@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { observationPoolMetrics } from "../agents/dropper/pool.js";
 import { reflectionPoolMetrics } from "../agents/merger/pool.js";
 import { resolveCompactionPolicy } from "../config.js";
+import { softThreshold } from "../hooks/cache-aware-compaction.js";
 import { compactionProgress as getCompactionProgress } from "../hooks/compaction-trigger.js";
 import type { Runtime } from "../runtime.js";
 import { stageProgress } from "../status/snapshot.js";
@@ -31,6 +32,16 @@ function addedSuffix(count: number): string | undefined {
 
 function removedSuffix(count: number): string | undefined {
 	return count > 0 ? `-${count.toLocaleString()}` : undefined;
+}
+
+function cacheAwareLine(runtime: Runtime, hard: number): string {
+	const cache = runtime.config.cacheAwareCompaction;
+	if (!cache.enabled) return "Cache-aware compaction: off";
+	const idle = cache.idle === false ? "off" : cache.idle === "auto" ? "auto" : `${cache.idle}s`;
+	const signal = runtime.lastColdSignal
+		? `${runtime.lastColdSignal.reason} at ${new Date(runtime.lastColdSignal.at).toLocaleTimeString()}`
+		: "none";
+	return `Cache-aware compaction: soft ~${softThreshold(hard, cache.softFraction).toLocaleString()} / hard ~${hard.toLocaleString()} tokens, idle ${idle}, model change ${cache.onModelChange ? "on" : "off"}, last cold signal ${signal}`;
 }
 
 function appendSuffixes(line: string, suffixes: (string | undefined)[]): string {
@@ -88,6 +99,7 @@ export function registerStatusCommand(pi: ExtensionAPI, runtime: Runtime): void 
 				`Next observation: ~${obsProgress.toLocaleString()} / ${runtime.config.observeAfterTokens.toLocaleString()} tokens (${pct(obsProgress, runtime.config.observeAfterTokens)}%)`,
 				`Next reflection:  ~${reflectionProgress.toLocaleString()} / ${runtime.config.reflectAfterTokens.toLocaleString()} tokens (${pct(reflectionProgress, runtime.config.reflectAfterTokens)}%)`,
 				`Next compaction:  ~${compactionProgress.toLocaleString()} / ${compactThreshold.toLocaleString()} tokens (${pct(compactionProgress, compactThreshold)}%)`,
+				cacheAwareLine(runtime, compactThreshold),
 				`Visible observation pool: ~${visibleObservationTokens.toLocaleString()} / ${runtime.config.observationsPoolMaxTokens.toLocaleString()} tokens (${pct(visibleObservationTokens, runtime.config.observationsPoolMaxTokens)}%)`,
 				`Active observation pool: ~${activeObservationPool.observationTokens.toLocaleString()} / ${runtime.config.observationsPoolTargetTokens.toLocaleString()} target tokens (${pct(activeObservationPool.observationTokens, runtime.config.observationsPoolTargetTokens)}%)`,
 				`Reflection pool:         ~${visibleReflectionTokens.toLocaleString()} tokens`,

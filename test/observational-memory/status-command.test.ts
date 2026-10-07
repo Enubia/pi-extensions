@@ -131,3 +131,48 @@ describe("om:status progress", () => {
 		expect(result.progress[2]).toBe("Next compaction:  ~4,000 / 100,000 tokens (4%)");
 	});
 });
+
+describe("om:status cache-aware compaction", () => {
+	async function cacheLines(overrides: Partial<Runtime["config"]>, setup?: (runtime: Runtime) => void) {
+		const runtime = new Runtime();
+		runtime.configLoaded = true;
+		runtime.config = { ...snapshotConfig("/nonexistent"), compactAfterTokensMode: "calibrated", compactAfterTokens: 1_000, ...overrides };
+		setup?.(runtime);
+		const registerCommand = vi.fn<ExtensionAPI["registerCommand"]>();
+		registerStatusCommand({ registerCommand } as unknown as ExtensionAPI, runtime);
+		const notify = vi.fn();
+		const ctx = {
+			cwd: "/nonexistent",
+			model: { contextWindow: 200_000 },
+			getContextUsage: () => ({ tokens: 100, contextWindow: undefined }),
+			sessionManager: { getBranch: () => [userEntry("hi")], getEntries: () => [userEntry("hi")] },
+			ui: { notify },
+		};
+		await registerCommand.mock.calls[0][1].handler("", ctx as unknown as ExtensionCommandContext);
+		return String(notify.mock.calls[0][0]).split("\n").filter((line) => line.startsWith("Cache-aware"));
+	}
+
+	it("shows soft and hard thresholds with no cold signal yet", async () => {
+		const lines = await cacheLines({});
+		expect(lines).toEqual(["Cache-aware compaction: soft ~600 / hard ~1,000 tokens, idle auto, model change on, last cold signal none"]);
+	});
+
+	it("shows the last cold signal and configured idle seconds", async () => {
+		const lines = await cacheLines(
+			{ cacheAwareCompaction: { enabled: true, softFraction: 0.5, idle: 120, onModelChange: false } },
+			(runtime) => { runtime.lastColdSignal = { reason: "model-change", at: Date.UTC(2026, 0, 1, 12, 0, 0) }; },
+		);
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toContain("soft ~500 / hard ~1,000 tokens, idle 120s, model change off, last cold signal model-change at ");
+	});
+
+	it("reports off when disabled", async () => {
+		const lines = await cacheLines({ cacheAwareCompaction: { enabled: false, softFraction: 0.6, idle: "auto", onModelChange: true } });
+		expect(lines).toEqual(["Cache-aware compaction: off"]);
+	});
+
+	it("shows idle off", async () => {
+		const lines = await cacheLines({ cacheAwareCompaction: { enabled: true, softFraction: 0.6, idle: false, onModelChange: true } });
+		expect(lines[0]).toContain("idle off");
+	});
+});

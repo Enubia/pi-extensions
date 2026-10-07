@@ -30,6 +30,15 @@ export interface ConfiguredModel {
  */
 export type CompactAfterTokensMode = "calibrated" | "ratio";
 
+export type CacheAwareIdle = "auto" | number | false;
+
+export interface CacheAwareCompactionConfig {
+	enabled: boolean;
+	softFraction: number;
+	idle: CacheAwareIdle;
+	onModelChange: boolean;
+}
+
 export interface Config {
 	observeAfterTokens: number;
 	reflectAfterTokens: number;
@@ -49,6 +58,7 @@ export interface Config {
 	globalCompactAfterTokensRatioByProvider?: Record<string, number>;
 	projectCompactAfterTokensRatioByProvider?: Record<string, number>;
 	projectCompactionScalarsExplicit?: boolean;
+	cacheAwareCompaction: CacheAwareCompactionConfig;
 	tailTokens: number;
 	resumeAfterMidRunCompaction: boolean;
 	observationsPoolMaxTokens: number;
@@ -80,6 +90,7 @@ export const DEFAULTS: Config = {
 	compactAfterTokens: 81_000,
 	compactAfterTokensMode: "calibrated",
 	compactAfterTokensRatio: 0.68,
+	cacheAwareCompaction: { enabled: true, softFraction: 0.6, idle: "auto", onModelChange: true },
 	tailTokens: 20_000,
 	resumeAfterMidRunCompaction: true,
 	observationsPoolMaxTokens: 20_000,
@@ -253,6 +264,19 @@ function normalizeModel(value: unknown): ConfiguredModel | undefined {
 	return model;
 }
 
+function normalizeCacheAwareCompaction(value: unknown): CacheAwareCompactionConfig | undefined {
+	if (!isRecord(value) || Array.isArray(value)) return undefined;
+	const defaults = DEFAULTS.cacheAwareCompaction;
+	const idle = value.idle;
+	const validIdle = idle === "auto" || idle === false || (typeof idle === "number" && Number.isFinite(idle) && idle > 0);
+	return {
+		enabled: typeof value.enabled === "boolean" ? value.enabled : defaults.enabled,
+		softFraction: validRatioOrUndefined(value.softFraction) ?? defaults.softFraction,
+		idle: validIdle ? (idle as CacheAwareIdle) : defaults.idle,
+		onModelChange: typeof value.onModelChange === "boolean" ? value.onModelChange : defaults.onModelChange,
+	};
+}
+
 function normalizeProviderRatios(value: unknown): Record<string, number> | undefined {
 	if (!isRecord(value) || Array.isArray(value)) return undefined;
 	const entries = Object.entries(value).filter(([provider, ratio]) => provider.trim().length > 0 && validRatioOrUndefined(ratio) !== undefined);
@@ -293,6 +317,8 @@ function normalizeSettingsConfig(value: Record<string, unknown>): Partial<Config
 	if (ratio !== undefined) normalized.compactAfterTokensRatio = ratio;
 	const providerRatios = normalizeProviderRatios(value.compactAfterTokensRatioByProvider);
 	if (providerRatios !== undefined) normalized.compactAfterTokensRatioByProvider = providerRatios;
+	const cacheAware = normalizeCacheAwareCompaction(value.cacheAwareCompaction);
+	if (cacheAware !== undefined) normalized.cacheAwareCompaction = cacheAware;
 	if (typeof value.showWorkerNotifications === "boolean") normalized.showWorkerNotifications = value.showWorkerNotifications;
 	if (typeof value.resumeAfterMidRunCompaction === "boolean") normalized.resumeAfterMidRunCompaction = value.resumeAfterMidRunCompaction;
 	if (typeof value.observerRedactSkillReads === "boolean") normalized.observerRedactSkillReads = value.observerRedactSkillReads;

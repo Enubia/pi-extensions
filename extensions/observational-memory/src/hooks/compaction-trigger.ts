@@ -83,7 +83,7 @@ export function startCompaction(
 	pi: ExtensionAPI,
 	runtime: Runtime,
 	ctx: TriggerCtx,
-	options: { progress?: number; threshold?: number; shouldResume: boolean },
+	options: { progress?: number; threshold?: number; shouldResume: boolean; reason?: string },
 ): boolean {
 	if (runtime.compactInFlight) return false;
 	const hasUI = ctx.hasUI;
@@ -122,9 +122,10 @@ export function startCompaction(
 		}
 	};
 	if (hasUI) {
-		const reason = progress !== undefined && threshold !== undefined
-			? `threshold reached (~${progress.toLocaleString()} / ${threshold.toLocaleString()} tokens)`
-			: "forced";
+		const reason = options.reason
+			?? (progress !== undefined && threshold !== undefined
+				? `threshold reached (~${progress.toLocaleString()} / ${threshold.toLocaleString()} tokens)`
+				: "forced");
 		ui?.notify(`Observational memory: compaction ${reason}${shouldResume ? "; will resume the run afterwards" : ""}`, "info");
 	}
 
