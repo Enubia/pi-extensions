@@ -8,7 +8,7 @@ export const OM_ENABLED = "om.enabled";
 
 export type CostEntryData = {
 	usd: number;
-	stages: Partial<Record<"observer" | "reflector" | "dropper", number>>;
+	stages: Partial<Record<"observer" | "reflector" | "merger" | "dropper", number>>;
 };
 
 export type EnabledEntryData = {
@@ -48,6 +48,7 @@ export type Reflection = {
 	content: string;
 	supportingObservationIds: string[];
 	tokenCount: number;
+	supersedesReflectionIds?: string[];
 };
 
 export type ObservationsRecordedEntryData = {
@@ -121,7 +122,8 @@ export function isReflection(value: unknown): value is Reflection {
 		isNonEmptyString(value.content) &&
 		!/\r|\n/.test(value.content) &&
 		isNonEmptyStringArray(value.supportingObservationIds) &&
-		isTokenCount(value.tokenCount)
+		isTokenCount(value.tokenCount) &&
+		(value.supersedesReflectionIds === undefined || isNonEmptyStringArray(value.supersedesReflectionIds))
 	);
 }
 

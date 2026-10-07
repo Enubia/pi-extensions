@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { observationPoolMetrics } from "../agents/dropper/pool.js";
+import { reflectionPoolMetrics } from "../agents/merger/pool.js";
 import { resolveCompactionPolicy } from "../config.js";
 import { compactionProgress as getCompactionProgress } from "../hooks/compaction-trigger.js";
 import type { Runtime } from "../runtime.js";
@@ -58,8 +59,9 @@ export function registerStatusCommand(pi: ExtensionAPI, runtime: Runtime): void 
 					removedSuffix(drift.droppedOnlyInFull.length),
 				],
 			);
+			const activeReflectionPool = reflectionPoolMetrics(folded.reflections, runtime.config.reflectionsPoolMaxTokens, runtime.config.reflectionsPoolTargetTokens);
 			const reflectionLine = appendSuffixes(
-				`Reflections:  ${folded.reflections.length} recorded / ${visible.reflections.length} visible`,
+				`Reflections:  ${folded.reflectionsById.size} recorded / ${folded.supersededReflectionIds.size} superseded / ${folded.reflections.length} active / ${visible.reflections.length} visible`,
 				[addedSuffix(drift.reflectionsOnlyInFull.length)],
 			);
 			const usage = ctx.getContextUsage?.();
@@ -89,6 +91,7 @@ export function registerStatusCommand(pi: ExtensionAPI, runtime: Runtime): void 
 				`Visible observation pool: ~${visibleObservationTokens.toLocaleString()} / ${runtime.config.observationsPoolMaxTokens.toLocaleString()} tokens (${pct(visibleObservationTokens, runtime.config.observationsPoolMaxTokens)}%)`,
 				`Active observation pool: ~${activeObservationPool.observationTokens.toLocaleString()} / ${runtime.config.observationsPoolTargetTokens.toLocaleString()} target tokens (${pct(activeObservationPool.observationTokens, runtime.config.observationsPoolTargetTokens)}%)`,
 				`Reflection pool:         ~${visibleReflectionTokens.toLocaleString()} tokens`,
+				`Active reflection pool:  ~${activeReflectionPool.reflectionTokens.toLocaleString()} / ${activeReflectionPool.maxTokens.toLocaleString()} max tokens (${pct(activeReflectionPool.reflectionTokens, activeReflectionPool.maxTokens)}%), target ${activeReflectionPool.targetTokens.toLocaleString()}`,
 				"",
 				"── Session ──",
 				`Worker cost: $${runtime.cost.usd.toFixed(4)} (${runtime.cost.runs} run${runtime.cost.runs === 1 ? "" : "s"})`,
@@ -105,12 +108,13 @@ export function registerStatusCommand(pi: ExtensionAPI, runtime: Runtime): void 
 				if (runtime.compactHookInFlight) lines.push("Compaction hook: running");
 			}
 
-			if (runtime.lastObserverError || runtime.lastReflectorError || runtime.lastDropperError || runtime.lastResumeError || runtime.autoCompactSuspended) {
+			if (runtime.lastObserverError || runtime.lastReflectorError || runtime.lastMergerError || runtime.lastDropperError || runtime.lastResumeError || runtime.autoCompactSuspended) {
 				lines.push("", "── Last error ──");
 				if (runtime.autoCompactSuspended) lines.push(`Auto-compaction suspended: ${runtime.autoCompactSuspended} (run /om:compact to retry)`);
 				if (runtime.lastResumeError) lines.push(`Resume: ${runtime.lastResumeError}`);
 				if (runtime.lastObserverError) lines.push(`Observer: ${runtime.lastObserverError}`);
 				if (runtime.lastReflectorError) lines.push(`Reflector: ${runtime.lastReflectorError}`);
+				if (runtime.lastMergerError) lines.push(`Merger: ${runtime.lastMergerError}`);
 				if (runtime.lastDropperError) lines.push(`Dropper: ${runtime.lastDropperError}`);
 			}
 

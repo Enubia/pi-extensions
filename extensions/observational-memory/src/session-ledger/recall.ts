@@ -6,6 +6,7 @@ import {
 	type Observation,
 	type Reflection,
 } from "./types.js";
+import { supersededReflectionIds } from "./supersede.js";
 
 const SOURCE_TYPES = new Set(["message", "custom_message", "branch_summary"]);
 
@@ -38,6 +39,7 @@ export type RecalledReflection = {
 	reflection: Reflection;
 	reflectionEntryId: string;
 	reflectionRecordIndex: number;
+	supersededBy?: string;
 };
 
 export type RecallResult =
@@ -206,11 +208,16 @@ export function recallMemorySources(entries: Entry[], memoryId: string): RecallR
 	}
 
 	const recalledObservations = Array.from(recalledByKey.values());
-	const recalledReflections: RecalledReflection[] = reflectionMatches.map(({ reflection, entryId, recordIndex }) => ({
-		reflection,
-		reflectionEntryId: entryId,
-		reflectionRecordIndex: recordIndex,
-	}));
+	const supersededBy = supersededReflectionIds(indexedReflections.map(({ reflection }) => reflection));
+	const recalledReflections: RecalledReflection[] = reflectionMatches.map(({ reflection, entryId, recordIndex }) => {
+		const by = supersededBy.get(reflection.id);
+		return {
+			reflection,
+			reflectionEntryId: entryId,
+			reflectionRecordIndex: recordIndex,
+			...(by ? { supersededBy: by } : {}),
+		};
+	});
 	const sourceEntries = uniqueById(recalledObservations.flatMap((match) => match.sourceEntries));
 	const missingSourceEntryIds = uniqueStrings(recalledObservations.flatMap((match) => match.missingSourceEntryIds));
 	const nonSourceEntryIds = uniqueStrings(recalledObservations.flatMap((match) => match.nonSourceEntryIds));

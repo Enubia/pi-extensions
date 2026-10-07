@@ -53,6 +53,8 @@ export interface Config {
 	resumeAfterMidRunCompaction: boolean;
 	observationsPoolMaxTokens: number;
 	observationsPoolTargetTokens: number;
+	reflectionsPoolMaxTokens: number;
+	reflectionsPoolTargetTokens: number;
 	agentMaxTurns: number;
 	agentMaxRetries: number;
 	/**
@@ -82,6 +84,8 @@ export const DEFAULTS: Config = {
 	resumeAfterMidRunCompaction: true,
 	observationsPoolMaxTokens: 20_000,
 	observationsPoolTargetTokens: 10_000,
+	reflectionsPoolMaxTokens: 8_000,
+	reflectionsPoolTargetTokens: 4_000,
 	agentMaxTurns: 16,
 	agentMaxRetries: 3,
 	agentMaxTokens: 32_000,
@@ -272,8 +276,11 @@ function normalizeSettingsConfig(value: Record<string, unknown>): Partial<Config
 		const normalizedValue = positiveIntegerOrUndefined(value[key]);
 		if (normalizedValue !== undefined) normalized[key] = normalizedValue;
 	}
-	const agentMaxRetries = nonNegativeIntegerOrUndefined(value.agentMaxRetries);
-	if (agentMaxRetries !== undefined) normalized.agentMaxRetries = agentMaxRetries;
+	const nonNegativeKeys = ["agentMaxRetries", "reflectionsPoolMaxTokens", "reflectionsPoolTargetTokens"] as const;
+	for (const key of nonNegativeKeys) {
+		const normalizedValue = nonNegativeIntegerOrUndefined(value[key]);
+		if (normalizedValue !== undefined) normalized[key] = normalizedValue;
+	}
 	if (value.observerPriorObservationsMaxTokens === false) normalized.observerPriorObservationsMaxTokens = false;
 	else {
 		const priorCap = nonNegativeIntegerOrUndefined(value.observerPriorObservationsMaxTokens);
@@ -335,9 +342,13 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv = process.env): C
 		merged.observationsPoolMaxTokens,
 	) ?? derivedObservationPoolTarget(merged.observationsPoolMaxTokens);
 
+	const reflectionPoolValid = merged.reflectionsPoolTargetTokens <= merged.reflectionsPoolMaxTokens;
+
 	return {
 		...merged,
 		observationsPoolTargetTokens: target,
+		reflectionsPoolMaxTokens: reflectionPoolValid ? merged.reflectionsPoolMaxTokens : DEFAULTS.reflectionsPoolMaxTokens,
+		reflectionsPoolTargetTokens: reflectionPoolValid ? merged.reflectionsPoolTargetTokens : DEFAULTS.reflectionsPoolTargetTokens,
 		globalCompactAfterTokensRatioByProvider: globalConfig.compactAfterTokensRatioByProvider,
 		projectCompactAfterTokensRatioByProvider: projectConfig.compactAfterTokensRatioByProvider,
 		projectCompactionScalarsExplicit: projectConfig.compactAfterTokens !== undefined

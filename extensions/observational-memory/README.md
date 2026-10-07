@@ -6,7 +6,7 @@ amosblomqvist's implementation. See `NOTICE`.
 
 ## What it does
 
-- **Observer → reflector → dropper** workers distill raw conversation into observations
+- **Observer → reflector → merger → dropper** workers distill raw conversation into observations
   (timestamped, id-addressed) and reflections, recorded as `om.*` entries in the session JSON.
   Memory records live in the session ledger; other existing outputs are described below.
 - **Compaction fires on `turn_end`**, not after the run settles. Progress is provider-reported
@@ -31,7 +31,7 @@ amosblomqvist's implementation. See `NOTICE`.
 | `/om:status` | Memory, activity, worker cost, compaction settings, in-flight state, last errors |
 | `/om:view [full]` | Display visible memory (default) or all recorded memory (`full`); automatically attempt to copy the displayed content to the system clipboard |
 | `/om:compact` | Force a compaction now (idle only, no resume) |
-| `/om:consolidate` | Force observer → reflector → dropper now |
+| `/om:consolidate` | Force observer → reflector → merger → dropper now |
 | `/om:model [provider/model[:thinking] \| clear]` | Pick the worker model (picker when bare); writes `observational-memory.model` and reloads |
 | `/om:factor [ratio \| percent \| reset]` | Pick or save a global compaction ratio for the currently selected provider; reset removes only that provider's global override; reloads |
 
@@ -49,11 +49,13 @@ All elpapi42 keys are unchanged. New:
 }
 ```
 
-`agentMaxRetries` (default `3`, non-negative integer; `0` disables, invalid values fall back to the default) retries the observer, reflector and dropper on transient provider errors (429, 5xx, overloaded, network, timeout) with exponential backoff of 2s/4s/8s ±20% jitter. Deliberate empty results, validation rejections, aborted streams and non-retryable errors are never retried, and remaining attempts are cancelled if memory is turned off or the session changes. Cost of failed attempts still counts toward `om.cost`; `/om:status` last errors include the attempt count and `debugLog` records a `<stage>.retry` event per attempt.
+`agentMaxRetries` (default `3`, non-negative integer; `0` disables, invalid values fall back to the default) retries the observer, reflector, merger and dropper on transient provider errors (429, 5xx, overloaded, network, timeout) with exponential backoff of 2s/4s/8s ±20% jitter. Deliberate empty results, validation rejections, aborted streams and non-retryable errors are never retried, and remaining attempts are cancelled if memory is turned off or the session changes. Cost of failed attempts still counts toward `om.cost`; `/om:status` last errors include the attempt count and `debugLog` records a `<stage>.retry` event per attempt.
 
 `observerRedactSkillReads` (default `true`) replaces the result of a `read` of a skill file (basename `SKILL.md`, or any path with a `skills/` directory segment) with `[skill file <path> loaded; content omitted]` in the text sent to the observer; the tool call line stays. `observerDedupeToolResults` (default `true`) replaces a tool result whose text is identical to an earlier result in the same observer chunk with `[identical to source entry <id>]`. Both apply only to observer input: recall, progress clocks and the ledger keep raw content, and chunk token budgeting uses the reduced size. `debugLog` records `redactedEntries` and `collapsedEntries` in `observer.start`.
 
 `observerPriorObservationsMaxTokens` (default `4000`, non-negative integer or `false`; negatives, `NaN` and other invalid values fall back to the default) caps the active observations sent to the observer as "do not restate" context. The newest observations whose rendered lines (same estimate as the observation pool) fit the budget are kept, in chronological order, and a first line `(N older observations omitted; only the most recent are shown)` marks the list as partial. `0` sends no observations; `false` sends all of them. Reflections are always sent in full, and the reflector and dropper always see the full active pool. `debugLog` records `priorObservationsOmitted` in `observer.start`.
+
+`reflectionsPoolMaxTokens` (default `8000`) and `reflectionsPoolTargetTokens` (default `4000`) bound the active reflection pool. Non-negative integers only; invalid values fall back to the default, and a target above the max resets both to defaults. When the active reflection lines reach the max after the reflector stage, the merger (same model and thinking level as the reflector) consolidates overlapping reflections until the projected pool is at or below the target. Merged reflections list the ids they replace in `supersedesReflectionIds` and carry the union of their supporting observations. Superseded reflections leave active memory, `/om:view full` and compaction summaries but stay resolvable via recall (`superseded by <id>`). `/om:status` shows the active pool against max and target.
 
 ### Provider compaction factors
 

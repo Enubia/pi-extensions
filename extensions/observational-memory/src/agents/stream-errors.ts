@@ -10,7 +10,7 @@ import { debugLog } from "../debug-log.js";
  * "the model chose not to call the tool", which hides the real cause
  * (rate limits, oversized prompts, auth failures, ...) from the debug log.
  */
-export function logAgentStreamError(stage: "observer" | "reflector" | "dropper", event: AgentEvent): void {
+export function logAgentStreamError(stage: "observer" | "reflector" | "merger" | "dropper", event: AgentEvent): void {
 	if (event.type !== "message_end") return;
 	const message = event.message;
 	if (message.role !== "assistant") return;
@@ -24,7 +24,7 @@ export function logAgentStreamError(stage: "observer" | "reflector" | "dropper",
 export class WorkerStreamError extends Error {
 	readonly stopReason: string;
 	readonly errorMessage: string | undefined;
-	constructor(stage: "observer" | "reflector" | "dropper", stopReason: string, errorMessage?: string) {
+	constructor(stage: "observer" | "reflector" | "merger" | "dropper", stopReason: string, errorMessage?: string) {
 		super(`${stage} stream ended with stopReason "${stopReason}"${errorMessage ? `: ${errorMessage}` : ""}`);
 		this.name = "WorkerStreamError";
 		this.stopReason = stopReason;

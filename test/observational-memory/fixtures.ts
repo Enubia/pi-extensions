@@ -2,9 +2,11 @@ import {
 	OM_COST,
 	OM_ENABLED,
 	OM_OBSERVATIONS_RECORDED,
+	OM_REFLECTIONS_RECORDED,
 	type CostEntryData,
 	type Entry,
 	type Observation,
+	type Reflection,
 } from "../../extensions/observational-memory/src/session-ledger/index.js";
 
 let counter = 0;
@@ -64,6 +66,20 @@ export function observation(seed: number, sourceEntryIds: string[], content = `o
 
 export function observationsRecordedEntry(observations: Observation[], coversUpToId: string, id = nextId("om")): Entry {
 	return { type: "custom", id, customType: OM_OBSERVATIONS_RECORDED, data: { observations, coversUpToId } };
+}
+
+export function reflection(seed: number, supportingObservationIds: string[], supersedesReflectionIds?: string[], content = `reflection ${seed}`): Reflection {
+	return {
+		id: memoryId(seed),
+		content,
+		supportingObservationIds,
+		tokenCount: Math.ceil(content.length / 4),
+		...(supersedesReflectionIds ? { supersedesReflectionIds } : {}),
+	};
+}
+
+export function reflectionsRecordedEntry(reflections: Reflection[], coversUpToId: string, id = nextId("om")): Entry {
+	return { type: "custom", id, customType: OM_REFLECTIONS_RECORDED, data: { reflections, coversUpToId } };
 }
 
 export function compactionEntry(firstKeptEntryId: string, id = nextId("c")): Entry {

@@ -9,6 +9,7 @@ import {
 	type Observation,
 	type Reflection,
 } from "./types.js";
+import { supersededReflectionIds } from "./supersede.js";
 
 export type FoldLedgerOptions = {
 	/** Fold entries from branch root through this entry id, inclusive. Omit to fold through branch tip. */
@@ -22,8 +23,9 @@ export type FoldedLedger = {
 	activeObservations: Observation[];
 	/** Tombstoned observation ids, including ids that may not have a corresponding folded observation. */
 	droppedObservationIds: Set<string>;
-	/** All first-valid reflection records encountered through the fold boundary. */
+	/** First-valid reflection records encountered through the fold boundary that no folded reflection supersedes. */
 	reflections: Reflection[];
+	supersededReflectionIds: Map<string, string>;
 	/** All first-valid observation records by id, including dropped observations. */
 	observationsById: Map<string, Observation>;
 	/** All first-valid reflection records by id. */
@@ -87,13 +89,15 @@ export function foldLedger(entries: Entry[], options: FoldLedgerOptions = {}): F
 
 	const observations = Array.from(observationsById.values());
 	const activeObservations = observations.filter((observation) => !droppedObservationIds.has(observation.id));
-	const reflections = Array.from(reflectionsById.values());
+	const supersededIds = supersededReflectionIds(Array.from(reflectionsById.values()));
+	const reflections = Array.from(reflectionsById.values()).filter((reflection) => !supersededIds.has(reflection.id));
 
 	return {
 		observations,
 		activeObservations,
 		droppedObservationIds,
 		reflections,
+		supersededReflectionIds: supersededIds,
 		observationsById,
 		reflectionsById,
 	};

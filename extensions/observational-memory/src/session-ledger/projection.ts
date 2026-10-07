@@ -9,6 +9,7 @@ import {
 	type Observation,
 	type Reflection,
 } from "./types.js";
+import { supersededReflectionIds } from "./supersede.js";
 
 export type Projection = {
 	observations: Observation[];
@@ -116,9 +117,11 @@ function foldProjection(entries: Entry[], options: ProjectionFoldOptions): Proje
 		}
 	}
 
+	const supersededIds = supersededReflectionIds(reflections);
+
 	return {
 		observations: observations.filter((observation) => !droppedObservationIds.has(observation.id)),
-		reflections,
+		reflections: reflections.filter((reflection) => !supersededIds.has(reflection.id)),
 	};
 }
 

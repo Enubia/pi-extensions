@@ -1,6 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runDropper } from "../agents/dropper/agent.js";
 import { observationPoolMetrics } from "../agents/dropper/pool.js";
+import { runMerger } from "../agents/merger/agent.js";
+import { reflectionPoolMetrics } from "../agents/merger/pool.js";
 import { ObserverStreamError, runObserver } from "../agents/observer/agent.js";
 import { selectPriorObservations } from "../agents/observer/prior-context.js";
 import { runReflector } from "../agents/reflector/agent.js";
@@ -28,6 +30,7 @@ import {
 	rawTokensSinceObservationCoverage,
 	rawTokensSinceReflectionCoverage,
 	reflectionToSummaryLine,
+	supersededReflectionIds,
 	type CostEntryData,
 	type Entry,
 	type Observation,
@@ -52,7 +55,7 @@ export type ConsolidationCtx = {
 	};
 };
 
-type Stage = "observer" | "reflector" | "dropper";
+type Stage = "observer" | "reflector" | "merger" | "dropper";
 
 class CostCollector {
 	stages: Partial<Record<Stage, number>> = {};
@@ -82,6 +85,10 @@ type ReflectorStageResult = {
 	effectiveReflectionCoverageId?: string;
 };
 
+type MergerStageResult = {
+	mergedReflections: Reflection[];
+};
+
 function sourceEntriesAfter(entries: Entry[], index: number): Entry[] {
 	return entries.slice(index + 1).filter(isSourceEntry);
 }
@@ -99,6 +106,12 @@ function mergeReflections(existing: Reflection[], additional: Reflection[]): Ref
 		merged.push(reflection);
 	}
 	return merged;
+}
+
+function activeReflections(folded: ReturnType<typeof foldLedger>, additional: Reflection[]): Reflection[] {
+	const all = mergeReflections(Array.from(folded.reflectionsById.values()), additional);
+	const superseded = supersededReflectionIds(all);
+	return all.filter((reflection) => !superseded.has(reflection.id));
 }
 
 /**
@@ -140,7 +153,7 @@ function shouldNotifyWorker(runtime: Runtime, ctx: ConsolidationCtx): boolean {
 	return runtime.config.showWorkerNotifications && ctx.hasUI;
 }
 
-function makeModelResolver(runtime: Runtime, ctx: ConsolidationCtx): (stage: "observer" | "reflector" | "dropper") => Promise<ResolvedModel | undefined> {
+function makeModelResolver(runtime: Runtime, ctx: ConsolidationCtx): (stage: Stage) => Promise<ResolvedModel | undefined> {
 	let cached: ResolveResult | undefined;
 	return async (stage) => {
 		cached ??= await runtime.resolveModel({
@@ -285,9 +298,17 @@ export async function runConsolidationPipeline(
 			return;
 		}
 
+		runtime.consolidationPhase = "merger";
+		let mergerResult: MergerStageResult = { mergedReflections: [] };
+		try {
+			mergerResult = await runMergerStage(pi, runtime, ctx, resolveModel, reflectorResult, cost.for("merger"), force);
+		} catch (error) {
+			debugLog("merger.error", { errorMessage: runtime.recordConsolidationStageError(ctx, "merger", error) });
+		}
+
 		runtime.consolidationPhase = "dropper";
 		try {
-			await runDropperStage(pi, runtime, ctx, resolveModel, reflectorResult.sameRunReflections, reflectorResult.effectiveReflectionCoverageId, cost.for("dropper"), force);
+			await runDropperStage(pi, runtime, ctx, resolveModel, [...reflectorResult.sameRunReflections, ...mergerResult.mergedReflections], reflectorResult.effectiveReflectionCoverageId, cost.for("dropper"), force);
 		} catch (error) {
 			debugLog("dropper.error", { errorMessage: runtime.recordConsolidationStageError(ctx, "dropper", error) });
 		}
@@ -505,6 +526,65 @@ async function runReflectorStage(
 	};
 }
 
+async function runMergerStage(
+	pi: ExtensionAPI,
+	runtime: Runtime,
+	ctx: ConsolidationCtx,
+	resolveModel: (stage: "merger") => Promise<ResolvedModel | undefined>,
+	reflectorResult: ReflectorStageResult,
+	onCost: (usd: number) => void,
+	force: boolean,
+): Promise<MergerStageResult> {
+	const none: MergerStageResult = { mergedReflections: [] };
+	const entries = ctx.sessionManager.getBranch() as Entry[];
+	const folded = foldLedger(entries);
+	const reflections = activeReflections(folded, reflectorResult.sameRunReflections);
+	const metrics = reflectionPoolMetrics(reflections, runtime.config.reflectionsPoolMaxTokens, runtime.config.reflectionsPoolTargetTokens);
+	if (!metrics.ready) return none;
+
+	const coversUpToId = reflectorResult.effectiveReflectionCoverageId ?? latestCoverageMarkerId(entries, OM_REFLECTIONS_RECORDED);
+	if (!coversUpToId) return none;
+
+	debugLog("merger.stage_start", {
+		reflectionTokens: metrics.reflectionTokens,
+		maxTokens: metrics.maxTokens,
+		targetTokens: metrics.targetTokens,
+		activeReflectionCount: metrics.activeReflectionCount,
+	});
+	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
+		`Observational memory: merger running — reflection pool ~${metrics.reflectionTokens.toLocaleString()} / ${metrics.maxTokens.toLocaleString()} max tokens`,
+		"info",
+	);
+	const resolved = await resolveModel("merger");
+	if (!resolved) return none;
+
+	const merged = await withRetries(() => runMerger({
+		model: resolved.model as any,
+		apiKey: resolved.apiKey,
+		headers: resolved.headers,
+		env: resolved.env,
+		reflections,
+		observationIds: Array.from(folded.observationsById.keys()),
+		targetTokens: runtime.config.reflectionsPoolTargetTokens,
+		maxTurns: runtime.config.agentMaxTurns,
+		maxOutputTokens: runtime.config.agentMaxTokens,
+		thinkingLevel: runtime.config.model?.thinking ?? "low",
+		modelRegistry: ctx.modelRegistry,
+		onCost,
+	}), retryOptions("merger", runtime, ctx, force));
+	if (!merged) return none;
+
+	const data = buildReflectionsRecordedData(merged, coversUpToId);
+	if (!data) return none;
+	appendEntry(pi, OM_REFLECTIONS_RECORDED, data);
+	debugLog("merger.appended", { count: merged.length, coversUpToId });
+	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
+		`Observational memory: merger consolidated ${merged.reduce((sum, item) => sum + (item.supersedesReflectionIds?.length ?? 0), 0)} reflections into ${merged.length}`,
+		"info",
+	);
+	return { mergedReflections: merged };
+}
+
 async function runDropperStage(
 	pi: ExtensionAPI,
 	runtime: Runtime,
@@ -557,7 +637,7 @@ async function runDropperStage(
 	const resolved = await resolveModel("dropper");
 	if (!resolved) return "abort";
 
-	const reflectionsForDropper = mergeReflections(folded.reflections, sameRunReflections);
+	const reflectionsForDropper = activeReflections(folded, sameRunReflections);
 	const droppedIds = await withRetries(() => runDropper({
 		model: resolved.model as any,
 		apiKey: resolved.apiKey,

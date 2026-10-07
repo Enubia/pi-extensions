@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Runtime } from "../runtime.js";
 import { copyTextToClipboard } from "../clipboard.js";
 import {
+	foldLedger,
 	fullProjection,
 	observationToSummaryLine,
 	reflectionToSummaryLine,
@@ -24,10 +25,14 @@ function renderList<T>(items: T[], render: (item: T) => string, empty: string): 
 	return items.length > 0 ? items.map(render).join("\n") : empty;
 }
 
-function renderContentOnlyProjection(projection: Projection, emptyScope: "visible" | "recorded"): string {
+function renderContentOnlyProjection(projection: Projection, emptyScope: "visible" | "recorded", supersededCount = 0): string {
+	const hidden = supersededCount > 0
+		? [`${supersededCount} superseded reflection${supersededCount === 1 ? "" : "s"} hidden`]
+		: [];
 	return [
 		"── Reflections ──",
 		renderList(projection.reflections, reflectionToSummaryLine, `No ${emptyScope} reflections.`),
+		...hidden,
 		"",
 		"── Observations ──",
 		renderList(projection.observations, observationToSummaryLine, `No ${emptyScope} observations.`),
@@ -59,7 +64,7 @@ export function registerViewCommand(pi: ExtensionAPI, runtime: Runtime, options:
 			};
 
 			if (mode === "full") {
-				await notifyWithCopy(renderContentOnlyProjection(fullProjection(entries), "recorded"));
+				await notifyWithCopy(renderContentOnlyProjection(fullProjection(entries), "recorded", foldLedger(entries).supersededReflectionIds.size));
 				return;
 			}
 
