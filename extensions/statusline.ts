@@ -32,12 +32,17 @@ type StatuslineState = {
 	getThinking?: () => string;
 	getBranch?: () => SessionEntry[];
 	getUsage?: () => Usage;
-	getMemorySnapshot?: () => MemorySnapshot | undefined;
+	getMemorySnapshot?: () => { snapshot: MemorySnapshot; module: OmSnapshotModule } | undefined;
 	requestRender?: () => void;
 };
 type MemoryProgress = { label: string; current: number; total: number };
 type MemorySnapshot = { enabled: boolean; bars: MemoryProgress[] };
-type OmSnapshotModule = { memorySnapshot: (ctx: SessionContext) => MemorySnapshot };
+type OmSnapshotModule = {
+	memorySnapshot: (ctx: SessionContext) => MemorySnapshot;
+	OM_PAUSE_STATUS_KEY: string;
+	parsePauseStatus: (status: string | undefined) => Set<string>;
+};
+type MemoryView = { snapshot: MemorySnapshot; paused: Set<string> };
 
 const BASH_GUARD_STATUS_KEY = " bash-guard";
 const MEMORY_BAR_WIDTH = 8;
@@ -74,11 +79,11 @@ function memorySnapshot(ctx: SessionContext, module: OmSnapshotModule): MemorySn
 	return snapshot;
 }
 
-function formatBar(item: MemoryProgress, theme: FooterTheme, withBar: boolean): string {
+function formatBar(item: MemoryProgress, theme: FooterTheme, withBar: boolean, paused: boolean): string {
 	const ratio = item.total > 0 ? Math.min(1, Math.max(0, item.current / item.total)) : 0;
 	const percentage = Math.round(ratio * 100);
-	const color = percentage >= 80 ? "success" : percentage >= 60 ? "accent" : "dim";
-	const label = theme.fg("dim", item.label);
+	const color = paused ? "warning" : percentage >= 80 ? "success" : percentage >= 60 ? "accent" : "dim";
+	const label = paused ? theme.fg("warning", `${item.label}⏸`) : theme.fg("dim", item.label);
 	const value = theme.fg(color, `${percentage}%`);
 	if (!withBar) return `${label} ${value}`;
 	const filledUnits = Math.round(ratio * MEMORY_BAR_WIDTH * 8);
@@ -89,11 +94,19 @@ function formatBar(item: MemoryProgress, theme: FooterTheme, withBar: boolean): 
 	return `${label} ${theme.fg("dim", "[")}${theme.fg(color, fill)}${theme.fg("dim", " ".repeat(emptyCells))}${theme.fg("dim", "]")} ${value}`;
 }
 
-function formatMemorySnapshot(snapshot: MemorySnapshot | undefined, theme: FooterTheme, budget: number): string {
-	if (!snapshot || !snapshot.enabled || snapshot.bars.length === 0) return "";
-	const withBars = snapshot.bars.map((item) => formatBar(item, theme, true)).join(" ");
+function formatMemorySnapshot(view: MemoryView | undefined, theme: FooterTheme, budget: number): string {
+	if (!view || !view.snapshot.enabled || view.snapshot.bars.length === 0) return "";
+	const { snapshot, paused } = view;
+	const withBars = snapshot.bars.map((item) => formatBar(item, theme, true, paused.has(item.label))).join(" ");
 	if (visibleWidth(withBars) <= budget) return withBars;
-	return snapshot.bars.map((item) => formatBar(item, theme, false)).join(" ");
+	return snapshot.bars.map((item) => formatBar(item, theme, false, paused.has(item.label))).join(" ");
+}
+
+function memoryView(state: StatuslineState, footerData: FooterData): MemoryView | undefined {
+	const loaded = state.getMemorySnapshot?.();
+	if (!loaded) return undefined;
+	const status = footerData.getExtensionStatuses?.().get(loaded.module.OM_PAUSE_STATUS_KEY);
+	return { snapshot: loaded.snapshot, paused: loaded.module.parsePauseStatus(status) };
 }
 
 function formatCount(value: number): string {
@@ -183,7 +196,7 @@ export default function (pi: ExtensionAPI) {
 		state.getUsage = ctx.getContextUsage?.bind(ctx);
 		state.getMemorySnapshot = () => {
 			const module = loadOmSnapshot(() => {});
-			return module ? memorySnapshot(ctx, module) : undefined;
+			return module ? { snapshot: memorySnapshot(ctx, module), module } : undefined;
 		};
 		return state;
 	};
@@ -227,7 +240,7 @@ export default function (pi: ExtensionAPI) {
 					const statusParts = [bashGuardStatus(footerData), failoverStatus(footerData, theme)].filter(Boolean);
 					const statusPart = statusParts.map((part) => `${theme.fg("dim", " | ")}${part}`).join("");
 					const leftWidth = visibleWidth(left + thinkingPart + usagePart + statusPart);
-					const memoryPart = formatMemorySnapshot(state.getMemorySnapshot?.(), theme, Math.max(0, width - leftWidth - 1));
+					const memoryPart = formatMemorySnapshot(memoryView(state, footerData), theme, Math.max(0, width - leftWidth - 1));
 					return [
 						alignRow(left + thinkingPart + usagePart + statusPart, memoryPart, width),
 						...nameRow(pi.getSessionName?.(), theme, width),

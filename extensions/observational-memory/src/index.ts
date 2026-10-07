@@ -7,7 +7,7 @@ import { registerViewCommand } from "./commands/view.js";
 import { registerCacheAwareCompaction } from "./hooks/cache-aware-compaction.js";
 import { registerCompactionHook } from "./hooks/compaction-hook.js";
 import { registerCompactionTrigger } from "./hooks/compaction-trigger.js";
-import { registerConsolidationTrigger } from "./hooks/consolidation-trigger.js";
+import { registerConsolidationTrigger, syncPauseStatus } from "./hooks/consolidation-trigger.js";
 import { readEnabledFromLedger, Runtime } from "./runtime.js";
 import type { Entry } from "./session-ledger/index.js";
 import { registerRecallTool } from "./tools/recall-observation.js";
@@ -23,6 +23,8 @@ export default function observationalMemory(pi: ExtensionAPI) {
 		runtime.cacheLastWarmAt = undefined;
 		runtime.lastColdSignal = undefined;
 		runtime.mergerNoProgress = undefined;
+		runtime.reflectorNoProgress = undefined;
+		syncPauseStatus(runtime, ctx);
 	});
 
 	registerConsolidationTrigger(pi, runtime);

@@ -28,8 +28,13 @@ amosblomqvist's implementation. See `NOTICE`.
 - **`recall(<id>)`** tool recovers the raw source entries behind any observation/reflection id.
 - **Cost tracking**: every worker run appends `om.cost`; the total sums all entries across all
   branches (never decreases under `/tree`).
-- **Statusline seam**: `src/status/snapshot.ts` exports `memorySnapshot(ctx)` — the only module
-  `../statusline.ts` imports lazily from the same package.
+- **Reflector gating**: unforced reflector runs require observation coverage newer than the last
+  reflection and than the last empty reflector verdict, so a stalled observer cannot loop it.
+- **Pause status**: `ctx.ui.setStatus("observational-memory", "om ⏸ obs ref")` lists stages that are
+  due but waiting (observer empty-backoff, reflector without new observations); cleared otherwise.
+- **Statusline seam**: `src/status/snapshot.ts` exports `memorySnapshot(ctx)` and the pause-status
+  parser — the only module `../statusline.ts` imports lazily from the same package. Paused bars
+  render as `obs⏸` / `ref⏸`.
 
 ## Commands
 

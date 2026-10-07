@@ -41,6 +41,7 @@ test("a relocated package footer reads bundled memory and refreshes the physical
 		assert.ok(start);
 		let footer: { render: (width: number) => string[] } = { render() { throw new Error("Footer not installed"); } };
 		let contextWindow = 128_000;
+		const statuses = new Map<string, string>();
 		let ready: () => void = () => {};
 		const rendered = new Promise<void>(resolve => { ready = resolve; });
 		const ctx = {
@@ -49,7 +50,7 @@ test("a relocated package footer reads bundled memory and refreshes the physical
 			getContextUsage: () => ({ tokens: 32_000, percent: 25, contextWindow }),
 			sessionManager: { getSessionId: () => "synthetic-memory-session", getBranch: () => [] },
 			ui: { setFooter(factory: (tui: unknown, theme: unknown, data: unknown) => typeof footer) {
-				footer = factory({ requestRender: () => ready() }, { fg: (_color: string, text: string) => text }, {});
+				footer = factory({ requestRender: () => ready() }, { fg: (_color: string, text: string) => text }, { getExtensionStatuses: () => statuses });
 			} },
 		};
 		await start({ type: "session_start" }, ctx as never);
@@ -60,6 +61,11 @@ test("a relocated package footer reads bundled memory and refreshes the physical
 			})]);
 		} finally { clearTimeout(timer); }
 		assert.match(footer.render(240)[0], /cmp .*50%/);
+		assert.doesNotMatch(footer.render(240)[0], /⏸/);
+		statuses.set("observational-memory", "om ⏸ obs ref");
+		assert.match(footer.render(240)[0], /obs⏸ \[.*ref⏸ \[.*cmp \[/);
+		statuses.clear();
+		assert.doesNotMatch(footer.render(240)[0], /⏸/);
 		contextWindow = 256_000;
 		assert.match(footer.render(240)[0], /cmp .*25%/);
 		ctx.model.provider = "other";

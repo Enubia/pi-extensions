@@ -11,6 +11,7 @@ import { debugLog, withDebugLogContext } from "../debug-log.js";
 import { resolveObserverChunkMaxTokens } from "../config.js";
 import type { ResolveResult, Runtime } from "../runtime.js";
 import { serializeSourceAddressedBranchEntries } from "../serialize.js";
+import { formatPauseStatus, OM_PAUSE_STATUS_KEY, type PausedStage } from "../status/pause-status.js";
 import {
 	OM_COST,
 	OM_OBSERVATIONS_DROPPED,
@@ -42,7 +43,10 @@ type ResolvedModel = Extract<ResolveResult, { ok: true }>;
 export type ConsolidationCtx = {
 	cwd: string;
 	hasUI: boolean;
-	ui?: { notify: (message: string, type?: "warning" | "info" | "error") => void };
+	ui?: {
+		notify: (message: string, type?: "warning" | "info" | "error") => void;
+		setStatus?: (key: string, text: string | undefined) => void;
+	};
 	model: unknown;
 	modelRegistry: any;
 	getContextUsage?: () => { tokens?: number | null; contextWindow?: number } | undefined;
@@ -143,6 +147,58 @@ function stageDue(
 	return rawEstimateFn(entries) >= threshold;
 }
 
+function observationBacklogTokens(entries: Entry[], currentTokens: number | undefined): number {
+	const real = currentTokens !== undefined ? realTokensSinceAnchor(entries, OM_OBSERVATIONS_RECORDED, currentTokens) : undefined;
+	return real !== undefined ? real : rawTokensSinceObservationCoverage(entries);
+}
+
+function observerBackoffActive(entries: Entry[], runtime: Runtime, identity: string | undefined, tokens: number): boolean {
+	const backoff = runtime.observerEmptyBackoff;
+	return backoff !== undefined
+		&& backoff.sessionIdentity === identity
+		&& backoff.coverageId === latestCoverageMarkerId(entries, OM_OBSERVATIONS_RECORDED)
+		&& tokens < backoff.tokensAtEmpty + runtime.config.observeAfterTokens;
+}
+
+function reflectorHasNewObservations(entries: Entry[], runtime: Runtime, identity: string | undefined): boolean {
+	const observationCoverageId = latestCoverageMarkerId(entries, OM_OBSERVATIONS_RECORDED);
+	if (!observationCoverageId) return false;
+	if (latestCoverageIndex(entries, OM_OBSERVATIONS_RECORDED) <= latestCoverageIndex(entries, OM_REFLECTIONS_RECORDED)) return false;
+	const memo = runtime.reflectorNoProgress;
+	return !(memo && memo.sessionIdentity === identity && memo.observationCoverageId === observationCoverageId);
+}
+
+export function pausedStages(entries: Entry[], runtime: Runtime, identity: string | undefined, currentTokens: number | undefined): PausedStage[] {
+	const stages: PausedStage[] = [];
+	if (observerBackoffActive(entries, runtime, identity, observationBacklogTokens(entries, currentTokens))) stages.push("obs");
+	if (
+		latestCoverageMarkerId(entries, OM_OBSERVATIONS_RECORDED)
+		&& !reflectorHasNewObservations(entries, runtime, identity)
+		&& stageDue(entries, runtime, currentTokens, OM_REFLECTIONS_RECORDED, rawTokensSinceReflectionCoverage, runtime.config.reflectAfterTokens)
+	) stages.push("ref");
+	return stages;
+}
+
+function pauseStatusText(runtime: Runtime, ctx: ConsolidationCtx): string | undefined {
+	if (!runtime.active) return undefined;
+	try {
+		const entries = ctx.sessionManager.getBranch() as Entry[];
+		return formatPauseStatus(pausedStages(entries, runtime, sessionIdentity(ctx), realContextTokens(ctx)));
+	} catch {
+		return undefined;
+	}
+}
+
+export function syncPauseStatus(runtime: Runtime, ctx: ConsolidationCtx): void {
+	try {
+		if (!ctx.hasUI) return;
+		const ui = ctx.ui;
+		ui?.setStatus?.(OM_PAUSE_STATUS_KEY, pauseStatusText(runtime, ctx));
+	} catch {
+		return;
+	}
+}
+
 function anyStageDue(entries: Entry[], runtime: Runtime, currentTokens: number | undefined): boolean {
 	return stageDue(entries, runtime, currentTokens, OM_OBSERVATIONS_RECORDED, rawTokensSinceObservationCoverage, runtime.config.observeAfterTokens)
 		|| stageDue(entries, runtime, currentTokens, OM_REFLECTIONS_RECORDED, rawTokensSinceReflectionCoverage, runtime.config.reflectAfterTokens);
@@ -225,6 +281,7 @@ function retryOptions(stage: Stage, runtime: Runtime, ctx: ConsolidationCtx, for
 
 export function launchConsolidation(pi: ExtensionAPI, runtime: Runtime, ctx: ConsolidationCtx, options: { force?: boolean } = {}): boolean {
 	runtime.ensureConfig(ctx.cwd);
+	syncPauseStatus(runtime, ctx);
 	if (!options.force && !runtime.active) return false;
 	if (runtime.consolidationInFlight) return false;
 
@@ -313,6 +370,7 @@ export async function runConsolidationPipeline(
 		}
 	} finally {
 		recordCost(pi, runtime, ctx, cost);
+		syncPauseStatus(runtime, ctx);
 	}
 }
 
@@ -325,9 +383,7 @@ async function runObserverStage(
 	force: boolean,
 ): Promise<StageOutcome> {
 	const entries = ctx.sessionManager.getBranch() as Entry[];
-	const currentTokens = realContextTokens(ctx);
-	const real = currentTokens !== undefined ? realTokensSinceAnchor(entries, OM_OBSERVATIONS_RECORDED, currentTokens) : undefined;
-	const tokens = real !== undefined ? real : rawTokensSinceObservationCoverage(entries); // fallback: no usage baseline / basis change
+	const tokens = observationBacklogTokens(entries, realContextTokens(ctx));
 	if (!force && tokens < runtime.config.observeAfterTokens) return "continue";
 
 	const sessionMetadata = debugSessionMetadata(ctx);
@@ -492,6 +548,11 @@ async function runReflectorStage(
 
 	const observationCoverageId = latestCoverageMarkerId(entries, OM_OBSERVATIONS_RECORDED);
 	if (!observationCoverageId) return { outcome: "continue", sameRunReflections: [] };
+	const identity = sessionIdentity(ctx);
+	if (!force && !reflectorHasNewObservations(entries, runtime, identity)) {
+		debugLog("reflector.no_new_observations", { observationCoverageId, reflectionTokens });
+		return { outcome: "continue", sameRunReflections: [] };
+	}
 
 	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
 		`Observational memory: reflector running (~${reflectionTokens.toLocaleString()} tokens)`,
@@ -514,10 +575,12 @@ async function runReflectorStage(
 		modelRegistry: ctx.modelRegistry,
 		onCost,
 	}), retryOptions("reflector", runtime, ctx, force));
-	if (!reflections) return { outcome: "continue", sameRunReflections: [] };
-
-	const data = buildReflectionsRecordedData(reflections, observationCoverageId);
-	if (!data) return { outcome: "continue", sameRunReflections: [] };
+	const data = reflections ? buildReflectionsRecordedData(reflections, observationCoverageId) : undefined;
+	if (!reflections || !data) {
+		runtime.reflectorNoProgress = { sessionIdentity: identity, observationCoverageId };
+		return { outcome: "continue", sameRunReflections: [] };
+	}
+	runtime.reflectorNoProgress = undefined;
 	appendEntry(pi, OM_REFLECTIONS_RECORDED, data);
 	return {
 		outcome: "continue",

@@ -11,6 +11,8 @@ import {
 	type V3MemoryCustomType,
 } from "../session-ledger/index.js";
 
+export { OM_PAUSE_STATUS_KEY, parsePauseStatus } from "./pause-status.js";
+
 export type MemoryBar = { label: string; current: number; total: number };
 
 export type MemorySnapshot = {

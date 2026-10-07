@@ -156,6 +156,7 @@ export class Runtime {
 	} | undefined;
 
 	mergerNoProgress: { sessionIdentity: string | undefined; reflectionIds: string } | undefined;
+	reflectorNoProgress: { sessionIdentity: string | undefined; observationCoverageId: string } | undefined;
 
 	ensureConfig(cwd: string): void {
 		if (this.configLoaded) return;
