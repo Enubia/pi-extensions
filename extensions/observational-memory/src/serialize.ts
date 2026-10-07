@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Message, TextContent, ToolResultMessage } from "@earendil-works/pi-ai/compat";
 import { estimateStringTokens } from "./tokens.js";
 
@@ -163,12 +164,19 @@ export type SourceAddressedSerialization = {
 	sourceEntryIds: string[];
 	estimatedTokens: number;
 	truncatedSourceEntryIds: string[];
+	redactedSourceEntryIds: string[];
+	collapsedSourceEntryIds: string[];
 };
 
 export type SourceAddressedSerializationOptions = {
 	/** Maximum estimated tokens in the final source-addressed text. */
 	maxTokens?: number;
+	redactSkillReads?: boolean;
+	dedupeToolResults?: boolean;
+	toolCallEntries?: RenderableEntry[];
 };
+
+type ToolCallInfo = { name: string; arguments: Record<string, unknown> };
 
 const SOURCE_OMISSION_MARKER =
 	"\n\n[… middle omitted: source exceeds observer input budget; original source remains in the session ledger …]\n\n";
@@ -184,6 +192,43 @@ function truncateSourceBlockToTokenBudget(label: string, rendered: string, maxTo
 	const headChars = Math.ceil(retainedChars / 2);
 	const tailChars = retainedChars - headChars;
 	return `${label}\n${rendered.slice(0, headChars)}${SOURCE_OMISSION_MARKER}${tailChars > 0 ? rendered.slice(-tailChars) : ""}`;
+}
+
+function collectToolCalls(entries: RenderableEntry[]): Map<string, ToolCallInfo> {
+	const calls = new Map<string, ToolCallInfo>();
+	for (const entry of entries) {
+		const message = entry.type === "message" ? (entry.message as Message | undefined) : undefined;
+		if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
+		for (const block of message.content) {
+			if (block?.type !== "toolCall" || typeof block.id !== "string" || typeof block.name !== "string") continue;
+			const args = block.arguments && typeof block.arguments === "object" ? (block.arguments as Record<string, unknown>) : {};
+			calls.set(block.id, { name: block.name, arguments: args });
+		}
+	}
+	return calls;
+}
+
+function isSkillPath(path: string): boolean {
+	const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
+	if (segments.at(-1) === "SKILL.md") return true;
+	return segments.slice(0, -1).includes("skills");
+}
+
+function skillReadPath(message: ToolResultMessage, calls: Map<string, ToolCallInfo>): string | undefined {
+	const call = calls.get(message.toolCallId);
+	if (call?.name !== "read" || message.toolName !== "read") return undefined;
+	const path = call.arguments.path ?? call.arguments.file_path;
+	return typeof path === "string" && isSkillPath(path) ? path : undefined;
+}
+
+function toolResultMessageOf(entry: RenderableEntry): ToolResultMessage | undefined {
+	if (entry.type !== "message") return undefined;
+	const message = entry.message as Message | undefined;
+	return message?.role === "toolResult" ? message : undefined;
+}
+
+function renderToolResultText(message: ToolResultMessage, text: string): string {
+	return `[Tool result for ${message.toolName} @ ${formatTimestamp(message.timestamp)}]: ${text}`;
 }
 
 function isSourceRenderableEntry(entry: RenderableEntry): boolean {
@@ -203,12 +248,37 @@ export function serializeSourceAddressedBranchEntries(
 	const blocks: string[] = [];
 	const sourceEntryIds: string[] = [];
 	const truncatedSourceEntryIds: string[] = [];
+	const redactedSourceEntryIds: string[] = [];
+	const collapsedSourceEntryIds: string[] = [];
+	const toolCalls = options.redactSkillReads ? collectToolCalls(options.toolCallEntries ?? entries) : undefined;
+	const seenResults = options.dedupeToolResults ? new Map<string, string>() : undefined;
 	let estimatedTokens = 0;
 
 	for (const entry of entries) {
 		if (!entry.id || !isSourceRenderableEntry(entry)) continue;
-		const rendered = serializeBranchEntries([entry]);
+		let rendered = serializeBranchEntries([entry]);
 		if (!rendered.trim()) continue;
+		let redacted = false;
+		let collapsed = false;
+		let resultHash: string | undefined;
+		const toolResult = toolResultMessageOf(entry);
+		if (toolResult) {
+			const skillPath = toolCalls ? skillReadPath(toolResult, toolCalls) : undefined;
+			if (skillPath !== undefined) {
+				rendered = renderToolResultText(toolResult, `[skill file ${skillPath} loaded; content omitted]`);
+				redacted = true;
+			} else if (seenResults) {
+				const text = textOnly(toolResult.content);
+				if (text.length > 0) {
+					resultHash = createHash("sha256").update(text).digest("hex");
+					const firstId = seenResults.get(resultHash);
+					if (firstId !== undefined) {
+						rendered = renderToolResultText(toolResult, `[identical to source entry ${firstId}]`);
+						collapsed = true;
+					}
+				}
+			}
+		}
 		const label = `[Source entry id: ${entry.id}]`;
 		const block = `${label}\n${rendered}`;
 		const separator = blocks.length > 0 ? "\n\n" : "";
@@ -223,16 +293,28 @@ export function serializeSourceAddressedBranchEntries(
 			sourceEntryIds.push(entry.id);
 			truncatedSourceEntryIds.push(entry.id);
 			estimatedTokens = estimateStringTokens(excerpt);
+			if (redacted) redactedSourceEntryIds.push(entry.id);
+			if (collapsed) collapsedSourceEntryIds.push(entry.id);
 			break;
 		}
 
 		blocks.push(block);
 		sourceEntryIds.push(entry.id);
+		if (redacted) redactedSourceEntryIds.push(entry.id);
+		if (collapsed) collapsedSourceEntryIds.push(entry.id);
+		if (seenResults && resultHash !== undefined && !collapsed) seenResults.set(resultHash, entry.id);
 		estimatedTokens += blockTokens;
 	}
 
 	const text = blocks.join("\n\n");
-	return { text, sourceEntryIds, estimatedTokens: estimateStringTokens(text), truncatedSourceEntryIds };
+	return {
+		text,
+		sourceEntryIds,
+		estimatedTokens: estimateStringTokens(text),
+		truncatedSourceEntryIds,
+		redactedSourceEntryIds,
+		collapsedSourceEntryIds,
+	};
 }
 
 function renderRecallMessage(entry: RenderableEntry): string | null {

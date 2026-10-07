@@ -350,7 +350,14 @@ async function runObserverStage(
 		sourceEntryIds,
 		estimatedTokens: chunkTokens,
 		truncatedSourceEntryIds,
-	} = serializeSourceAddressedBranchEntries(backlogEntries, { maxTokens: maxChunkTokens });
+		redactedSourceEntryIds,
+		collapsedSourceEntryIds,
+	} = serializeSourceAddressedBranchEntries(backlogEntries, {
+		maxTokens: maxChunkTokens,
+		redactSkillReads: runtime.config.observerRedactSkillReads,
+		dedupeToolResults: runtime.config.observerDedupeToolResults,
+		toolCallEntries: entries,
+	});
 	if (!chunk.trim() || sourceEntryIds.length === 0) return "continue";
 	const coversUpToId = sourceEntryIds.at(-1);
 	if (!coversUpToId) return "continue";
@@ -380,6 +387,8 @@ async function runObserverStage(
 		coversUpToId,
 		sourceEntryIds,
 		sourceEntryCount: sourceEntryIds.length,
+		redactedEntries: redactedSourceEntryIds.length,
+		collapsedEntries: collapsedSourceEntryIds.length,
 		priorReflections: priorReflections.length,
 		priorObservations: priorObservations.length,
 	});

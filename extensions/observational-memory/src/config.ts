@@ -39,6 +39,8 @@ export interface Config {
 	 * window; see {@link resolveObserverChunkMaxTokens}.
 	 */
 	observerChunkMaxTokens?: number;
+	observerRedactSkillReads: boolean;
+	observerDedupeToolResults: boolean;
 	compactAfterTokens: number;
 	compactAfterTokensMode: CompactAfterTokensMode;
 	compactAfterTokensRatio: number;
@@ -69,6 +71,8 @@ export interface Config {
 export const DEFAULTS: Config = {
 	observeAfterTokens: 10_000,
 	reflectAfterTokens: 20_000,
+	observerRedactSkillReads: true,
+	observerDedupeToolResults: true,
 	compactAfterTokens: 81_000,
 	compactAfterTokensMode: "calibrated",
 	compactAfterTokensRatio: 0.68,
@@ -277,6 +281,8 @@ function normalizeSettingsConfig(value: Record<string, unknown>): Partial<Config
 	if (providerRatios !== undefined) normalized.compactAfterTokensRatioByProvider = providerRatios;
 	if (typeof value.showWorkerNotifications === "boolean") normalized.showWorkerNotifications = value.showWorkerNotifications;
 	if (typeof value.resumeAfterMidRunCompaction === "boolean") normalized.resumeAfterMidRunCompaction = value.resumeAfterMidRunCompaction;
+	if (typeof value.observerRedactSkillReads === "boolean") normalized.observerRedactSkillReads = value.observerRedactSkillReads;
+	if (typeof value.observerDedupeToolResults === "boolean") normalized.observerDedupeToolResults = value.observerDedupeToolResults;
 	if (typeof value.passive === "boolean") normalized.passive = value.passive;
 	if (typeof value.debugLog === "boolean") normalized.debugLog = value.debugLog;
 	const model = normalizeModel(value.model);
