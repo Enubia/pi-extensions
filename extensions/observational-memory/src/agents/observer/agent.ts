@@ -3,7 +3,7 @@ import type { Message, Model, ModelThinkingLevel } from "@earendil-works/pi-ai/c
 import { Type } from "@earendil-works/pi-ai/compat";
 import type { Static } from "typebox";
 import { hashId } from "../../ids.js";
-import { logAgentStreamError } from "../stream-errors.js";
+import { WorkerStreamError, logAgentStreamError } from "../stream-errors.js";
 import { reportCost } from "../usage-cost.js";
 import { resolveWorkerStreamSimple, type StreamableModelRegistry, type WorkerStreamSimple } from "../worker-stream.js";
 import { AGENT_LOOP_MAX_TOKENS, boundedMaxTokens } from "../../model-budget.js";
@@ -75,12 +75,10 @@ type RecordObservationsArgs = Static<typeof RecordObservationsSchema>;
  * runs normally, so without this the caller cannot tell a hard failure from a
  * deliberate empty result (#32).
  */
-export class ObserverStreamError extends Error {
-	readonly stopReason: string;
+export class ObserverStreamError extends WorkerStreamError {
 	constructor(stopReason: string, errorMessage?: string) {
-		super(`observer stream ended with stopReason "${stopReason}"${errorMessage ? `: ${errorMessage}` : ""}`);
+		super("observer", stopReason, errorMessage);
 		this.name = "ObserverStreamError";
-		this.stopReason = stopReason;
 	}
 }
 

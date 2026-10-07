@@ -51,6 +51,7 @@ export interface Config {
 	observationsPoolMaxTokens: number;
 	observationsPoolTargetTokens: number;
 	agentMaxTurns: number;
+	agentMaxRetries: number;
 	/**
 	 * Maximum output tokens requested for background memory-agent loops
 	 * (observer/reflector/dropper). Always clamped to the model's own
@@ -76,6 +77,7 @@ export const DEFAULTS: Config = {
 	observationsPoolMaxTokens: 20_000,
 	observationsPoolTargetTokens: 10_000,
 	agentMaxTurns: 16,
+	agentMaxRetries: 3,
 	agentMaxTokens: 32_000,
 	showWorkerNotifications: true,
 	passive: false,
@@ -193,6 +195,10 @@ function positiveIntegerOrUndefined(value: unknown): number | undefined {
 	return Number.isInteger(value) && typeof value === "number" && value > 0 ? value : undefined;
 }
 
+function nonNegativeIntegerOrUndefined(value: unknown): number | undefined {
+	return Number.isInteger(value) && typeof value === "number" && value >= 0 ? value : undefined;
+}
+
 function validTargetOrUndefined(value: unknown, maxTokens: number): number | undefined {
 	const target = positiveIntegerOrUndefined(value);
 	return target !== undefined && target < maxTokens ? target : undefined;
@@ -260,6 +266,8 @@ function normalizeSettingsConfig(value: Record<string, unknown>): Partial<Config
 		const normalizedValue = positiveIntegerOrUndefined(value[key]);
 		if (normalizedValue !== undefined) normalized[key] = normalizedValue;
 	}
+	const agentMaxRetries = nonNegativeIntegerOrUndefined(value.agentMaxRetries);
+	if (agentMaxRetries !== undefined) normalized.agentMaxRetries = agentMaxRetries;
 	if (isCompactAfterTokensMode(value.compactAfterTokensMode)) {
 		normalized.compactAfterTokensMode = value.compactAfterTokensMode;
 	}

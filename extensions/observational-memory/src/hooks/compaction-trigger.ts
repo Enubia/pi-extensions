@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { RETRYABLE_ERROR_RE } from "../agents/retry.js";
 import { resolveCompactionPolicy } from "../config.js";
 import { debugLog, withDebugLogContext } from "../debug-log.js";
 import type { Runtime } from "../runtime.js";
@@ -12,9 +13,6 @@ import {
 export const RESUME_PROMPT =
 	"[automatic] Your context was just compacted to free space; no user message was sent. "
 	+ "Continue exactly where you left off, as if the compaction had not happened.";
-
-const RETRYABLE_ERROR_RE =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?error|connection.?refused|connection.?lost|websocket.?closed|websocket.?error|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|http2 request did not get a response|timed? out|timeout|terminated|retry delay/i;
 
 type TurnEndLike = {
 	message?: { role?: string; stopReason?: string; errorMessage?: string };

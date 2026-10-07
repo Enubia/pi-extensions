@@ -20,3 +20,22 @@ export function logAgentStreamError(stage: "observer" | "reflector" | "dropper",
 		errorMessage: message.errorMessage,
 	});
 }
+
+export class WorkerStreamError extends Error {
+	readonly stopReason: string;
+	readonly errorMessage: string | undefined;
+	constructor(stage: "observer" | "reflector" | "dropper", stopReason: string, errorMessage?: string) {
+		super(`${stage} stream ended with stopReason "${stopReason}"${errorMessage ? `: ${errorMessage}` : ""}`);
+		this.name = "WorkerStreamError";
+		this.stopReason = stopReason;
+		this.errorMessage = errorMessage;
+	}
+}
+
+export function streamFailureFromEvent(event: AgentEvent): { stopReason: string; errorMessage?: string } | undefined {
+	if (event.type !== "message_end") return undefined;
+	const message = event.message;
+	if (message.role !== "assistant") return undefined;
+	if (message.stopReason !== "error" && message.stopReason !== "aborted") return undefined;
+	return { stopReason: message.stopReason, errorMessage: message.errorMessage };
+}

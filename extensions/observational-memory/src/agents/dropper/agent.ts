@@ -4,7 +4,7 @@ import { Type } from "@earendil-works/pi-ai/compat";
 import type { Static } from "typebox";
 import { debugLog } from "../../debug-log.js";
 import { AGENT_LOOP_MAX_TOKENS, boundedMaxTokens } from "../../model-budget.js";
-import { logAgentStreamError } from "../stream-errors.js";
+import { WorkerStreamError, logAgentStreamError, streamFailureFromEvent } from "../stream-errors.js";
 import { reportCost } from "../usage-cost.js";
 import { resolveWorkerStreamSimple, type StreamableModelRegistry, type WorkerStreamSimple } from "../worker-stream.js";
 import { reflectionToSummaryLine, type Observation, type Reflection } from "../../session-ledger/index.js";
@@ -271,12 +271,15 @@ export async function runDropper(args: RunDropperArgs): Promise<string[] | undef
 		signal,
 		resolveWorkerStreamSimple(model, args.modelRegistry, args.streamSimple),
 	);
+	let streamFailure: ReturnType<typeof streamFailureFromEvent>;
 	for await (const event of stream) {
 		// Tool execution collects candidate ids.
 		logAgentStreamError("dropper", event);
 		reportCost(event, args.onCost);
+		streamFailure = streamFailureFromEvent(event) ?? streamFailure;
 	}
 	await stream.result();
+	if (proposedDropIds.length === 0 && streamFailure) throw new WorkerStreamError("dropper", streamFailure.stopReason, streamFailure.errorMessage);
 	const droppedIds = selectDropCandidates(proposedDropIds, observations, maxDropsAllowed, reflections);
 	const reason = droppedIds.length > 0
 		? "selected_nonempty"

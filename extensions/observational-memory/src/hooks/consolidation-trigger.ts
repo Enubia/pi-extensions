@@ -3,6 +3,7 @@ import { runDropper } from "../agents/dropper/agent.js";
 import { observationPoolMetrics } from "../agents/dropper/pool.js";
 import { ObserverStreamError, runObserver } from "../agents/observer/agent.js";
 import { runReflector } from "../agents/reflector/agent.js";
+import { withRetries, type RetryOptions } from "../agents/retry.js";
 import { debugLog, withDebugLogContext } from "../debug-log.js";
 import { resolveObserverChunkMaxTokens } from "../config.js";
 import type { ResolveResult, Runtime } from "../runtime.js";
@@ -195,6 +196,20 @@ function debugSessionMetadata(ctx: ConsolidationCtx): { sessionId?: string; sess
 	}
 }
 
+function sessionIdentity(ctx: ConsolidationCtx): string | undefined {
+	const { sessionId, sessionFile } = debugSessionMetadata(ctx);
+	return sessionId ?? sessionFile;
+}
+
+function retryOptions(stage: Stage, runtime: Runtime, ctx: ConsolidationCtx, force: boolean): RetryOptions {
+	const identity = sessionIdentity(ctx);
+	return {
+		stage,
+		maxRetries: runtime.config.agentMaxRetries,
+		canContinue: () => (force ? runtime.enabled : runtime.active) && sessionIdentity(ctx) === identity,
+	};
+}
+
 export function launchConsolidation(pi: ExtensionAPI, runtime: Runtime, ctx: ConsolidationCtx, options: { force?: boolean } = {}): boolean {
 	runtime.ensureConfig(ctx.cwd);
 	if (!options.force && !runtime.active) return false;
@@ -271,7 +286,7 @@ export async function runConsolidationPipeline(
 
 		runtime.consolidationPhase = "dropper";
 		try {
-			await runDropperStage(pi, runtime, ctx, resolveModel, reflectorResult.sameRunReflections, reflectorResult.effectiveReflectionCoverageId, cost.for("dropper"));
+			await runDropperStage(pi, runtime, ctx, resolveModel, reflectorResult.sameRunReflections, reflectorResult.effectiveReflectionCoverageId, cost.for("dropper"), force);
 		} catch (error) {
 			debugLog("dropper.error", { errorMessage: runtime.recordConsolidationStageError(ctx, "dropper", error) });
 		}
@@ -371,7 +386,7 @@ async function runObserverStage(
 
 	let observations: Observation[] | undefined;
 	try {
-		observations = await runObserver({
+		observations = await withRetries(() => runObserver({
 			model: resolved.model as any,
 			apiKey: resolved.apiKey,
 			headers: resolved.headers,
@@ -385,7 +400,7 @@ async function runObserverStage(
 			thinkingLevel: runtime.config.model?.thinking ?? "low",
 			modelRegistry: ctx.modelRegistry,
 			onCost,
-		});
+		}), retryOptions("observer", runtime, ctx, force));
 	} catch (error) {
 		if (error instanceof ObserverStreamError) {
 			// API/stream failure is not a clean empty (#32): surface it as a real
@@ -449,7 +464,7 @@ async function runReflectorStage(
 	if (!resolved) return { outcome: "abort", sameRunReflections: [] };
 
 	const folded = foldLedger(entries);
-	const reflections = await runReflector({
+	const reflections = await withRetries(() => runReflector({
 		model: resolved.model as any,
 		apiKey: resolved.apiKey,
 		headers: resolved.headers,
@@ -461,7 +476,7 @@ async function runReflectorStage(
 		thinkingLevel: runtime.config.model?.thinking ?? "low",
 		modelRegistry: ctx.modelRegistry,
 		onCost,
-	});
+	}), retryOptions("reflector", runtime, ctx, force));
 	if (!reflections) return { outcome: "continue", sameRunReflections: [] };
 
 	const data = buildReflectionsRecordedData(reflections, observationCoverageId);
@@ -482,6 +497,7 @@ async function runDropperStage(
 	sameRunReflections: Reflection[],
 	sameRunReflectionCoverageId: string | undefined,
 	onCost: (usd: number) => void,
+	force: boolean,
 ): Promise<StageOutcome> {
 	if (!sameRunReflectionCoverageId || sameRunReflections.length === 0) {
 		debugLog("dropper.waiting_for_reflection", { sameRunReflections: sameRunReflections.length });
@@ -526,7 +542,7 @@ async function runDropperStage(
 	if (!resolved) return "abort";
 
 	const reflectionsForDropper = mergeReflections(folded.reflections, sameRunReflections);
-	const droppedIds = await runDropper({
+	const droppedIds = await withRetries(() => runDropper({
 		model: resolved.model as any,
 		apiKey: resolved.apiKey,
 		headers: resolved.headers,
@@ -539,7 +555,7 @@ async function runDropperStage(
 		thinkingLevel: runtime.config.model?.thinking ?? "low",
 		modelRegistry: ctx.modelRegistry,
 		onCost,
-	});
+	}), retryOptions("dropper", runtime, ctx, force));
 	const coversUpToId = earlierCoverageMarkerId(entries, observationCoverageId, sameRunReflectionCoverageId);
 	const data = coversUpToId && droppedIds ? buildObservationsDroppedData(droppedIds, coversUpToId) : undefined;
 	debugLog("dropper.append", {

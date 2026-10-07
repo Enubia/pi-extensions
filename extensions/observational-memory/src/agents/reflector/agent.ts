@@ -4,7 +4,7 @@ import { Type } from "@earendil-works/pi-ai/compat";
 import type { Static } from "typebox";
 import { debugLog } from "../../debug-log.js";
 import { hashId } from "../../ids.js";
-import { logAgentStreamError } from "../stream-errors.js";
+import { WorkerStreamError, logAgentStreamError, streamFailureFromEvent } from "../stream-errors.js";
 import { reportCost } from "../usage-cost.js";
 import { resolveWorkerStreamSimple, type StreamableModelRegistry, type WorkerStreamSimple } from "../worker-stream.js";
 import { AGENT_LOOP_MAX_TOKENS, boundedMaxTokens } from "../../model-budget.js";
@@ -204,12 +204,15 @@ export async function runReflector(args: RunReflectorArgs): Promise<Reflection[]
 		signal,
 		resolveWorkerStreamSimple(model, args.modelRegistry, args.streamSimple),
 	);
+	let streamFailure: ReturnType<typeof streamFailureFromEvent>;
 	for await (const event of stream) {
 		// Tool execution collects records.
 		logAgentStreamError("reflector", event);
 		reportCost(event, args.onCost);
+		streamFailure = streamFailureFromEvent(event) ?? streamFailure;
 	}
 	await stream.result();
+	if (accumulated.size === 0 && streamFailure) throw new WorkerStreamError("reflector", streamFailure.stopReason, streamFailure.errorMessage);
 	const acceptedReflections = Array.from(accumulated.values());
 	const afterCoverageById = reflectionCoverageMap(observations, [...reflections, ...acceptedReflections]);
 	debugLog("reflector.result", {

@@ -105,9 +105,8 @@ for (const worker of workers) describe(`${worker.name} real-loop turn cap`, () =
 			if (stopReason === "aborted") controller.abort();
 			return response([], stopReason);
 		} });
-		if (!collected && worker.name === "observer") await expect(run).rejects.toMatchObject({ name: "ObserverStreamError", stopReason });
-		else if (collected) expect(await run).toMatchObject(worker.result([1]));
-		else expect(await run).toBeUndefined();
+		if (!collected) await expect(run).rejects.toMatchObject({ stopReason, ...(worker.name === "observer" ? { name: "ObserverStreamError" } : {}) });
+		else expect(await run).toMatchObject(worker.result([1]));
 		expect(requests).toBe(collected ? 2 : 1);
 	});
 });

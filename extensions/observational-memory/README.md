@@ -49,6 +49,8 @@ All elpapi42 keys are unchanged. New:
 }
 ```
 
+`agentMaxRetries` (default `3`, non-negative integer; `0` disables, invalid values fall back to the default) retries the observer, reflector and dropper on transient provider errors (429, 5xx, overloaded, network, timeout) with exponential backoff of 2s/4s/8s ±20% jitter. Deliberate empty results, validation rejections, aborted streams and non-retryable errors are never retried, and remaining attempts are cancelled if memory is turned off or the session changes. Cost of failed attempts still counts toward `om.cost`; `/om:status` last errors include the attempt count and `debugLog` records a `<stage>.retry` event per attempt.
+
 ### Provider compaction factors
 
 `/om:factor 0.5`, `/om:factor 50%`, and `/om:factor 50` save the same global override across codebases for the exact selected `ctx.model.provider`. Bare invocation opens a picker; `/om:factor reset` removes that provider's global override. These commands change only `compactAfterTokensRatioByProvider`, never scalar defaults or session state. No model-specific settings or routing/provider guesses are used.
