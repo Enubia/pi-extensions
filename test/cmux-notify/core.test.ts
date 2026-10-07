@@ -1,22 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyNotification, isCmuxEnvironment, isInputPromptTool, notificationArguments, promptLabel, resolveCmuxCli, sessionLabel } from "../../extensions/cmux-notify/core.ts";
-
-test("classifies aborted and errored assistant results as Error", () => {
-	assert.equal(classifyNotification({ stopReason: "error", content: [{ type: "text", text: "Completed" }] }), "Error");
-	assert.equal(classifyNotification({ stopReason: "aborted", content: [{ type: "text", text: "Completed" }] }), "Error");
-});
-
-test("classifies clear requests for a user response as Needs Input", () => {
-	assert.equal(classifyNotification({ content: [{ type: "text", text: "Which option would you like me to use?" }] }), "Needs Input");
-	assert.equal(classifyNotification({ content: [{ type: "text", text: "Implemented the requested change." }] }), "Done");
-});
-
-test("classifies decision questions as Needs Input", () => {
-	assert.equal(classifyNotification({ content: [{ type: "text", text: "Do you want me to proceed?" }] }), "Needs Input");
-	assert.equal(classifyNotification({ content: [{ type: "text", text: "Should I use option A or option B?" }] }), "Needs Input");
-	assert.equal(classifyNotification({ content: [{ type: "text", text: "Are you okay with this approach?" }] }), "Needs Input");
-});
+import { isCmuxEnvironment, isInputPromptTool, notificationArguments, promptLabel, resolveCmuxCli, sessionLabel } from "../../extensions/cmux-notify/core.ts";
 
 test("uses the Pi session name, falling back to the current directory basename", () => {
 	assert.equal(sessionLabel("release prep", "/work/dotfiles"), "release prep");
@@ -49,5 +33,5 @@ test("appends the question to the prompt notification body", () => {
 test("uses the bundled cmux CLI when available and constructs concise notifications", () => {
 	assert.equal(resolveCmuxCli({ CMUX_BUNDLED_CLI_PATH: "/Applications/cmux.app/Contents/Resources/bin/cmux" }), "/Applications/cmux.app/Contents/Resources/bin/cmux");
 	assert.equal(resolveCmuxCli({ CMUX_BUNDLED_CLI_PATH: "  " }), "cmux");
-	assert.deepEqual(notificationArguments("Needs Input", "release prep"), ["notify", "--title", "Pi: Needs Input", "--body", "release prep"]);
+	assert.deepEqual(notificationArguments("release prep"), ["notify", "--title", "Pi: Needs Input", "--body", "release prep"]);
 });
