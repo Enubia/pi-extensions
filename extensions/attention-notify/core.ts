@@ -12,16 +12,44 @@ export function sessionLabel(sessionName: string | undefined, cwd: string): stri
 	return basename || "session";
 }
 
+export type NotificationBackend = "cmux" | "wezterm";
+
 export function isCmuxEnvironment(environment: Environment): boolean {
 	return Boolean(environment.CMUX_WORKSPACE_ID || environment.CMUX_TAB_ID || environment.CMUX_SOCKET_PATH);
+}
+
+export function isWezTermEnvironment(environment: Environment): boolean {
+	if (environment.TERM_PROGRAM === "WezTerm") return true;
+	return Boolean(environment.WEZTERM_PANE) && !environment.TMUX;
+}
+
+export function resolveBackend(environment: Environment): NotificationBackend | undefined {
+	if (isCmuxEnvironment(environment)) return "cmux";
+	if (isWezTermEnvironment(environment)) return "wezterm";
+	return undefined;
 }
 
 export function resolveCmuxCli(environment: Environment): string {
 	return environment.CMUX_BUNDLED_CLI_PATH?.trim() || "cmux";
 }
 
+const NOTIFICATION_TITLE = "Pi: Needs Input";
+
 export function notificationArguments(label: string): string[] {
-	return ["notify", "--title", "Pi: Needs Input", "--body", label];
+	return ["notify", "--title", NOTIFICATION_TITLE, "--body", label];
+}
+
+export function soundCommand(platform: NodeJS.Platform): [string, string[]] | undefined {
+	if (platform !== "darwin") return undefined;
+	return ["afplay", ["/System/Library/Sounds/Glass.aiff"]];
+}
+
+function oscField(value: string): string {
+	return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/;/g, ",");
+}
+
+export function osc777Notification(label: string): string {
+	return `\x1b]777;notify;${oscField(NOTIFICATION_TITLE)};${oscField(label)}\x1b\\`;
 }
 
 const INPUT_PROMPT_TOOLS = new Set(["ask_user_question"]);

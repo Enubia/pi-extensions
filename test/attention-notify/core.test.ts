@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isCmuxEnvironment, isInputPromptTool, notificationArguments, promptLabel, resolveCmuxCli, sessionLabel } from "../../extensions/cmux-notify/core.ts";
+import { isCmuxEnvironment, isInputPromptTool, isWezTermEnvironment, notificationArguments, osc777Notification, promptLabel, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand } from "../../extensions/attention-notify/core.ts";
 
 test("uses the Pi session name, falling back to the current directory basename", () => {
 	assert.equal(sessionLabel("release prep", "/work/dotfiles"), "release prep");
@@ -13,6 +13,29 @@ test("detects cmux from workspace, tab, or socket context", () => {
 	assert.equal(isCmuxEnvironment({ CMUX_TAB_ID: "tab-id" }), true);
 	assert.equal(isCmuxEnvironment({ CMUX_SOCKET_PATH: "/tmp/cmux.sock" }), true);
 	assert.equal(isCmuxEnvironment({ TERM: "xterm-256color" }), false);
+});
+
+test("detects WezTerm directly or via its pane variable outside tmux", () => {
+	assert.equal(isWezTermEnvironment({ TERM_PROGRAM: "WezTerm" }), true);
+	assert.equal(isWezTermEnvironment({ WEZTERM_PANE: "3" }), true);
+	assert.equal(isWezTermEnvironment({ WEZTERM_PANE: "3", TMUX: "/tmp/tmux" }), false);
+	assert.equal(isWezTermEnvironment({ TERM_PROGRAM: "ghostty" }), false);
+});
+
+test("prefers cmux over WezTerm and returns nothing for other terminals", () => {
+	assert.equal(resolveBackend({ CMUX_WORKSPACE_ID: "w", TERM_PROGRAM: "WezTerm" }), "cmux");
+	assert.equal(resolveBackend({ TERM_PROGRAM: "WezTerm" }), "wezterm");
+	assert.equal(resolveBackend({ TERM_PROGRAM: "ghostty" }), undefined);
+});
+
+test("builds an OSC 777 notification with separators and control characters neutralized", () => {
+	assert.equal(osc777Notification("release prep: Ship?"), "\x1b]777;notify;Pi: Needs Input;release prep: Ship?\x1b\\");
+	assert.equal(osc777Notification("a;b\x1b\x07c"), "\x1b]777;notify;Pi: Needs Input;a,b  c\x1b\\");
+});
+
+test("plays a system sound only on macOS", () => {
+	assert.deepEqual(soundCommand("darwin"), ["afplay", ["/System/Library/Sounds/Glass.aiff"]]);
+	assert.equal(soundCommand("linux"), undefined);
 });
 
 test("recognizes tools that block on user input", () => {

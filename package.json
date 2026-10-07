@@ -9,7 +9,7 @@
     "extensions": [
       "./extensions/ask-user-question.ts",
       "./extensions/bash-guard/index.ts",
-      "./extensions/cmux-notify/index.ts",
+      "./extensions/attention-notify/index.ts",
       "./extensions/lsp/index.ts",
       "./extensions/observational-memory/src/index.ts",
       "./extensions/provider-failover/index.ts",

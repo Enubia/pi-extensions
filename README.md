@@ -8,7 +8,7 @@ My personal [Pi](https://github.com/earendil-works/pi) extensions. The defaults 
 | --- | --- |
 | `ask-user-question` | Tool that lets the agent ask the user structured questions |
 | `bash-guard` | Guards agent `bash` calls, stricter for subagents |
-| `cmux-notify` | cmux notification when the agent asks a question |
+| `attention-notify` | cmux or WezTerm notification when the agent asks a question |
 | `lsp` | Language-server diagnostics, hover, definitions, references, symbols |
 | `observational-memory` | Session-ledger memory with mid-run compaction |
 | `provider-failover` | Switches provider on quota or transient failures, switches back after cooldown |
