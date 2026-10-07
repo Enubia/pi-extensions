@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runDropper } from "../agents/dropper/agent.js";
 import { observationPoolMetrics } from "../agents/dropper/pool.js";
 import { ObserverStreamError, runObserver } from "../agents/observer/agent.js";
+import { selectPriorObservations } from "../agents/observer/prior-context.js";
 import { runReflector } from "../agents/reflector/agent.js";
 import { withRetries, type RetryOptions } from "../agents/retry.js";
 import { debugLog, withDebugLogContext } from "../debug-log.js";
@@ -375,7 +376,11 @@ async function runObserverStage(
 
 	const memory = fullProjection(entries);
 	const priorReflections = memory.reflections.map(reflectionToSummaryLine);
-	const priorObservations = memory.observations.map(observationToSummaryLine);
+	const { observations: keptObservations, omitted: priorObservationsOmitted } = selectPriorObservations(
+		memory.observations,
+		runtime.config.observerPriorObservationsMaxTokens,
+	);
+	const priorObservations = keptObservations.map(observationToSummaryLine);
 
 	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(
 		`Observational memory: observer running on ~${chunkTokens.toLocaleString()}-token chunk`,
@@ -391,6 +396,7 @@ async function runObserverStage(
 		collapsedEntries: collapsedSourceEntryIds.length,
 		priorReflections: priorReflections.length,
 		priorObservations: priorObservations.length,
+		priorObservationsOmitted,
 	});
 
 	let observations: Observation[] | undefined;
@@ -402,6 +408,7 @@ async function runObserverStage(
 			env: resolved.env,
 			priorReflections,
 			priorObservations,
+			priorObservationsOmitted,
 			chunk,
 			allowedSourceEntryIds: sourceEntryIds,
 			maxTurns: runtime.config.agentMaxTurns,

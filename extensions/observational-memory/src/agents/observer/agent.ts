@@ -8,6 +8,7 @@ import { reportCost } from "../usage-cost.js";
 import { resolveWorkerStreamSimple, type StreamableModelRegistry, type WorkerStreamSimple } from "../worker-stream.js";
 import { AGENT_LOOP_MAX_TOKENS, boundedMaxTokens } from "../../model-budget.js";
 import { OBSERVER_SYSTEM } from "./prompts.js";
+import { priorObservationsOmittedLine } from "./prior-context.js";
 import { nowTimestamp, truncateRecordContent } from "../../serialize.js";
 import type { Observation, Relevance } from "../../session-ledger/index.js";
 import { observationLineTokenCount } from "../../tokens.js";
@@ -19,6 +20,7 @@ interface RunObserverArgs {
 	env?: Record<string, string>;
 	priorReflections: string[];
 	priorObservations: string[];
+	priorObservationsOmitted?: number;
 	chunk: string;
 	allowedSourceEntryIds: string[];
 	signal?: AbortSignal;
@@ -107,6 +109,8 @@ export async function runObserver(args: RunObserverArgs): Promise<Observation[] 
 	const { model, apiKey, headers, env, priorReflections, priorObservations, chunk, allowedSourceEntryIds, signal } = args;
 	const conversation = chunk.trim();
 	if (!conversation) return undefined;
+	const omitted = args.priorObservationsOmitted ?? 0;
+	const observationLines = omitted > 0 ? [priorObservationsOmittedLine(omitted), ...priorObservations] : priorObservations;
 
 	const accumulated = new Map<string, Observation>();
 
@@ -169,7 +173,7 @@ CURRENT REFLECTIONS:
 ${joinOrEmpty(priorReflections)}
 
 CURRENT OBSERVATIONS:
-${joinOrEmpty(priorObservations)}
+${joinOrEmpty(observationLines)}
 
 Compress the following new conversation chunk into observations by calling record_observations one or more times. Do not restate facts already present in current reflections or current observations. Prefer inline conversation timestamps when assigning times; fall back to the current local time above only if no message timestamp applies. Stop calling the tool and reply with a short plain-text confirmation once the chunk is fully covered.
 

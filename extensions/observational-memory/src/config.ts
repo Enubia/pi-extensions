@@ -41,6 +41,7 @@ export interface Config {
 	observerChunkMaxTokens?: number;
 	observerRedactSkillReads: boolean;
 	observerDedupeToolResults: boolean;
+	observerPriorObservationsMaxTokens: number | false;
 	compactAfterTokens: number;
 	compactAfterTokensMode: CompactAfterTokensMode;
 	compactAfterTokensRatio: number;
@@ -73,6 +74,7 @@ export const DEFAULTS: Config = {
 	reflectAfterTokens: 20_000,
 	observerRedactSkillReads: true,
 	observerDedupeToolResults: true,
+	observerPriorObservationsMaxTokens: 4_000,
 	compactAfterTokens: 81_000,
 	compactAfterTokensMode: "calibrated",
 	compactAfterTokensRatio: 0.68,
@@ -272,6 +274,11 @@ function normalizeSettingsConfig(value: Record<string, unknown>): Partial<Config
 	}
 	const agentMaxRetries = nonNegativeIntegerOrUndefined(value.agentMaxRetries);
 	if (agentMaxRetries !== undefined) normalized.agentMaxRetries = agentMaxRetries;
+	if (value.observerPriorObservationsMaxTokens === false) normalized.observerPriorObservationsMaxTokens = false;
+	else {
+		const priorCap = nonNegativeIntegerOrUndefined(value.observerPriorObservationsMaxTokens);
+		if (priorCap !== undefined) normalized.observerPriorObservationsMaxTokens = priorCap;
+	}
 	if (isCompactAfterTokensMode(value.compactAfterTokensMode)) {
 		normalized.compactAfterTokensMode = value.compactAfterTokensMode;
 	}
