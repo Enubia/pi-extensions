@@ -42,7 +42,7 @@ export function notificationArguments(label: string, title = NEEDS_INPUT_TITLE):
 
 export function soundCommand(platform: NodeJS.Platform): [string, string[]] | undefined {
 	if (platform !== "darwin") return undefined;
-	return ["afplay", ["/System/Library/Sounds/Glass.aiff"]];
+	return ["osascript", ["-e", "beep"]];
 }
 
 function oscField(value: string): string {

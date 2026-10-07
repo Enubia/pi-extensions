@@ -35,7 +35,7 @@ test("builds an OSC 777 notification with separators and control characters neut
 });
 
 test("plays a system sound only on macOS", () => {
-	assert.deepEqual(soundCommand("darwin"), ["afplay", ["/System/Library/Sounds/Glass.aiff"]]);
+	assert.deepEqual(soundCommand("darwin"), ["osascript", ["-e", "beep"]]);
 	assert.equal(soundCommand("linux"), undefined);
 });
 

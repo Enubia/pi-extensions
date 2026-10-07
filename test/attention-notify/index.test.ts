@@ -70,7 +70,7 @@ test("writes an OSC 777 notification and plays a sound in WezTerm TUI sessions",
 		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: { question: "Which option?" } }, ctx);
 		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: {} }, { ...ctx, mode: "rpc" });
 		assert.deepEqual(written, ["\x1b]777;notify;Pi: Needs Input;dotfiles: Which option?\x1b\\"]);
-		const expectedSound = process.platform === "darwin" ? [["afplay", ["/System/Library/Sounds/Glass.aiff"], { timeout: 10_000 }]] : [];
+		const expectedSound = process.platform === "darwin" ? [["osascript", ["-e", "beep"], { timeout: 10_000 }]] : [];
 		assert.deepEqual(tui.executions, expectedSound);
 	} finally {
 		process.stdout.write = originalWrite;
