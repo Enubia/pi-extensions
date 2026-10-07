@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { isInputPromptTool, notificationArguments, osc777Notification, promptLabel, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand } from "./core.ts";
+import { DONE_TITLE, isInputPromptTool, isSubagentEnvironment, notificationArguments, osc777Notification, promptLabel, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand } from "./core.ts";
 
 export default function attentionNotifyExtension(pi: ExtensionAPI) {
 	pi.on("tool_execution_start", async (event, ctx) => {
@@ -11,8 +11,18 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 			void pi.exec(resolveCmuxCli(process.env), notificationArguments(label), { timeout: 10_000 }).catch(() => {});
 			return;
 		}
-		process.stdout.write(osc777Notification(label));
+		notifyWezTerm(label);
+	});
+
+	pi.on("agent_settled", async (_event, ctx) => {
+		if (ctx.mode !== "tui" || isSubagentEnvironment(process.env)) return;
+		if (resolveBackend(process.env) !== "wezterm") return;
+		notifyWezTerm(sessionLabel(pi.getSessionName(), ctx.cwd), DONE_TITLE);
+	});
+
+	function notifyWezTerm(label: string, title?: string) {
+		process.stdout.write(osc777Notification(label, title));
 		const sound = soundCommand(process.platform);
 		if (sound) void pi.exec(sound[0], sound[1], { timeout: 10_000 }).catch(() => {});
-	});
+	}
 }

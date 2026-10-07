@@ -31,6 +31,7 @@ test("prefers cmux over WezTerm and returns nothing for other terminals", () => 
 test("builds an OSC 777 notification with separators and control characters neutralized", () => {
 	assert.equal(osc777Notification("release prep: Ship?"), "\x1b]777;notify;Pi: Needs Input;release prep: Ship?\x1b\\");
 	assert.equal(osc777Notification("a;b\x1b\x07c"), "\x1b]777;notify;Pi: Needs Input;a,b  c\x1b\\");
+	assert.equal(osc777Notification("release prep", "Pi: Done"), "\x1b]777;notify;Pi: Done;release prep\x1b\\");
 });
 
 test("plays a system sound only on macOS", () => {
