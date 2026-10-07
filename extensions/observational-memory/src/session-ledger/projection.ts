@@ -4,6 +4,7 @@ import {
 	isObservationsDroppedEntry,
 	isObservationsRecordedEntry,
 	isReflectionsRecordedEntry,
+	validCurrentTask,
 	type CurrentTask,
 	type Entry,
 	type MemoryDetails,
@@ -167,7 +168,7 @@ export function latestCompactionCurrentTask(entries: Entry[]): CurrentTask | und
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		if (entry.type !== "compaction") continue;
-		return isMemoryDetails(entry.details) ? entry.details.currentTask : undefined;
+		return isMemoryDetails(entry.details) ? validCurrentTask(entry.details.currentTask) : undefined;
 	}
 	return undefined;
 }
@@ -196,7 +197,7 @@ function boundaryCurrentTask(entries: Entry[], firstKeptEntryId: string): Curren
 	const boundaryId = entries[boundaryIndex].id;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
-		if (isObservationsRecordedEntry(entry) && entry.data.coversUpToId === boundaryId) return entry.data.currentTask;
+		if (isObservationsRecordedEntry(entry) && entry.data.coversUpToId === boundaryId) return validCurrentTask(entry.data.currentTask);
 	}
 	return undefined;
 }

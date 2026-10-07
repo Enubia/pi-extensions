@@ -108,13 +108,16 @@ export function registerCacheAwareCompaction(pi: ExtensionAPI, runtime: Runtime)
 	});
 
 	pi.on("before_agent_start", async (_event, ctx) => {
-		const pending = runtime.cacheColdReason;
-		runtime.cacheColdReason = undefined;
 		if (!gate(runtime, ctx)) return;
-		if (runtime.compactInFlight || runtime.autoCompactSuspended) return;
+		if (runtime.compactInFlight || runtime.autoCompactSuspended || runtime.consolidationInFlight) return;
+		const pending = runtime.cacheColdReason;
 		const cacheCtx = ctx as unknown as CacheCtx;
 		const measured = measure(runtime, cacheCtx);
-		if (!measured || measured.progress < measured.soft) return;
+		if (!measured) return;
+		if (measured.progress < measured.soft) {
+			runtime.cacheColdReason = undefined;
+			return;
+		}
 		const entries = ctx.sessionManager.getBranch() as Entry[];
 		const now = Date.now();
 		const reason: CacheColdReason | undefined = pending ?? (isIdleCold(runtime, entries, cacheCtx.model, now) ? "idle" : undefined);
@@ -128,7 +131,8 @@ export function registerCacheAwareCompaction(pi: ExtensionAPI, runtime: Runtime)
 				shouldResume: false,
 				reason: description,
 			});
-			if (!started) resolve();
+			if (started) runtime.cacheColdReason = undefined;
+			else resolve();
 		});
 	});
 }

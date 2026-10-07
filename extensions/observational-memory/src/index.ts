@@ -22,6 +22,7 @@ export default function observationalMemory(pi: ExtensionAPI) {
 		runtime.cacheColdReason = undefined;
 		runtime.cacheLastWarmAt = undefined;
 		runtime.lastColdSignal = undefined;
+		runtime.mergerNoProgress = undefined;
 	});
 
 	registerConsolidationTrigger(pi, runtime);

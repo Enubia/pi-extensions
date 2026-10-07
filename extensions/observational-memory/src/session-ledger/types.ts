@@ -139,14 +139,17 @@ export function isCurrentTask(value: unknown): value is CurrentTask {
 	return isNonEmptyString(value.content) && isNonEmptyString(value.timestamp);
 }
 
+export function validCurrentTask(value: unknown): CurrentTask | undefined {
+	return isCurrentTask(value) ? value : undefined;
+}
+
 export function isObservationsRecordedData(value: unknown): value is ObservationsRecordedEntryData {
 	if (!isPlainRecord(value)) return false;
 	return (
 		Array.isArray(value.observations) &&
 		value.observations.length > 0 &&
 		value.observations.every(isObservation) &&
-		isNonEmptyString(value.coversUpToId) &&
-		(value.currentTask === undefined || isCurrentTask(value.currentTask))
+		isNonEmptyString(value.coversUpToId)
 	);
 }
 
@@ -174,8 +177,7 @@ export function isMemoryDetails(value: unknown): value is MemoryDetails {
 		Array.isArray(value.observations) &&
 		value.observations.every(isObservation) &&
 		Array.isArray(value.reflections) &&
-		value.reflections.every(isReflection) &&
-		(value.currentTask === undefined || isCurrentTask(value.currentTask))
+		value.reflections.every(isReflection)
 	);
 }
 

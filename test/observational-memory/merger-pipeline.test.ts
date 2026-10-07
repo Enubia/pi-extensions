@@ -105,6 +105,11 @@ function harness(options: { scripts?: Partial<Record<Stage, Reply[]>>; config?: 
 	return {
 		runtime, entries, requests, appended,
 		run: () => runConsolidationPipeline(pi, runtime, ctx, true),
+		runUnforced: () => runConsolidationPipeline(pi, runtime, ctx, false),
+		mergerCalls: () => requests.filter((request) => request.stage === "merger").length,
+		addReflection: (seed: number) => {
+			entries.push(reflectionsRecordedEntry([reflection(seed, [observations[0].id], undefined, `${LONG} extra ${seed}.`)], user.id, `extra-${seed}`));
+		},
 		stagesCalled: () => requests.map((request) => request.stage),
 		recordedReflections: () => appended.filter((entry) => entry.customType === OM_REFLECTIONS_RECORDED),
 	};
@@ -115,6 +120,37 @@ function merge(sources: { id: string }[], content = "Merged durable project fact
 }
 
 describe("merger stage", () => {
+	it("skips the merger on later passes after a zero-merge run while the active reflection set is unchanged", async () => {
+		const h = harness();
+		await h.runUnforced();
+		expect(h.mergerCalls()).toBe(1);
+		await h.runUnforced();
+		await h.runUnforced();
+		expect(h.mergerCalls()).toBe(1);
+	});
+
+	it("re-enables the merger when the active reflection set changes", async () => {
+		const h = harness();
+		await h.runUnforced();
+		h.addReflection(200);
+		await h.runUnforced();
+		expect(h.mergerCalls()).toBe(2);
+	});
+
+	it("ignores the zero-merge memo on a forced consolidation", async () => {
+		const h = harness();
+		await h.runUnforced();
+		await h.run();
+		expect(h.mergerCalls()).toBe(2);
+	});
+
+	it("does not remember a merger run that failed", async () => {
+		const h = harness({ scripts: { merger: [{ kind: "error", message: "Synthetic failure" }] } });
+		await h.runUnforced();
+		await h.runUnforced();
+		expect(h.mergerCalls()).toBe(2);
+	});
+
 	it("never calls the merger while the active reflection pool is under the max", async () => {
 		const h = harness({ config: { reflectionsPoolMaxTokens: 100_000 } });
 		await h.run();

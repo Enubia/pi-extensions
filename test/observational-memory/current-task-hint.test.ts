@@ -18,6 +18,7 @@ import {
 	buildCompactionProjection,
 	isMemoryDetails,
 	isObservationsRecordedData,
+	latestCompactionCurrentTask,
 	renderSummary,
 	type Entry,
 } from "../../extensions/observational-memory/src/session-ledger/index.js";
@@ -158,16 +159,17 @@ describe("ledger validators", () => {
 		expect(isObservationsRecordedData({ ...base, currentTask: HINT })).toBe(true);
 	});
 
-	it("rejects malformed hints", () => {
-		expect(isObservationsRecordedData({ ...base, currentTask: { content: "", timestamp: "t" } })).toBe(false);
-		expect(isObservationsRecordedData({ ...base, currentTask: "text" })).toBe(false);
+	it("tolerates malformed hints without invalidating the entry", () => {
+		expect(isObservationsRecordedData({ ...base, currentTask: { content: "", timestamp: "t" } })).toBe(true);
+		expect(isObservationsRecordedData({ ...base, currentTask: "text" })).toBe(true);
+		expect(isObservationsRecordedData({ ...base, currentTask: 42 })).toBe(true);
 	});
 
 	it("accepts folded details with an optional hint", () => {
 		const details = { type: OM_FOLDED, version: 1, fullFold: false, observations: [], reflections: [] };
 		expect(isMemoryDetails(details)).toBe(true);
 		expect(isMemoryDetails({ ...details, currentTask: HINT })).toBe(true);
-		expect(isMemoryDetails({ ...details, currentTask: { content: 1 } })).toBe(false);
+		expect(isMemoryDetails({ ...details, currentTask: { content: 1 } })).toBe(true);
 	});
 });
 
@@ -243,6 +245,39 @@ describe("compaction projection hint selection", () => {
 		const bad = { type: "custom", id: "bad", customType: OM_OBSERVATIONS_RECORDED, data: { observations: [observation(2, [c.u2.id])], coversUpToId: c.a2.id, currentTask: { content: 5 } } } as Entry;
 		const projection = buildCompactionProjection([c.u1, c.a1, c.chunk1, c.u2, c.a2, bad, c.u3, c.a3], c.u3.id, config);
 		expect(projection.currentTask).toBeUndefined();
+	});
+});
+
+describe("lenient malformed hints", () => {
+	function cut(currentTask: unknown) {
+		const u1 = userEntry(text(100));
+		const a1 = assistantEntry(text(100));
+		const u2 = userEntry(text(50));
+		const a2 = assistantEntry(text(50));
+		const chunk = {
+			type: "custom",
+			id: "chunk",
+			customType: OM_OBSERVATIONS_RECORDED,
+			data: { observations: [observation(1, [u1.id, a1.id])], coversUpToId: a1.id, currentTask },
+		} as Entry;
+		return buildCompactionProjection([u1, a1, chunk, u2, a2], u2.id, { observationsPoolMaxTokens: 1_000_000 });
+	}
+
+	it.each([42, { content: "Task", timestamp: 7 }, { content: "Task" }, { content: "", timestamp: "t" }])(
+		"folds observations and shows no hint for currentTask %j",
+		(bad) => {
+			const projection = cut(bad);
+			expect(projection.observations.map((o) => o.id)).toEqual([observation(1, ["x"]).id]);
+			expect(projection.currentTask).toBeUndefined();
+			expect(projection.details).not.toHaveProperty("currentTask");
+		},
+	);
+
+	it("ignores a malformed hint on folded compaction details", () => {
+		const details = { type: OM_FOLDED, version: 1, fullFold: false, observations: [], reflections: [], currentTask: 42 };
+		const entries = [{ type: "compaction", id: "c", firstKeptEntryId: "x", summary: "s", details } as Entry];
+		expect(isMemoryDetails(details)).toBe(true);
+		expect(latestCompactionCurrentTask(entries)).toBeUndefined();
 	});
 });
 

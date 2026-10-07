@@ -155,6 +155,8 @@ export class Runtime {
 		tokensAtEmpty: number;
 	} | undefined;
 
+	mergerNoProgress: { sessionIdentity: string | undefined; reflectionIds: string } | undefined;
+
 	ensureConfig(cwd: string): void {
 		if (this.configLoaded) return;
 		this.config = loadConfig(cwd);

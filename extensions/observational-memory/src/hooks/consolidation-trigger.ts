@@ -545,6 +545,14 @@ async function runMergerStage(
 	const coversUpToId = reflectorResult.effectiveReflectionCoverageId ?? latestCoverageMarkerId(entries, OM_REFLECTIONS_RECORDED);
 	if (!coversUpToId) return none;
 
+	const reflectionIds = reflections.map((reflection) => reflection.id).sort().join(",");
+	const identity = sessionIdentity(ctx);
+	const memo = runtime.mergerNoProgress;
+	if (!force && memo && memo.sessionIdentity === identity && memo.reflectionIds === reflectionIds) {
+		debugLog("merger.no_progress_skip", { activeReflectionCount: metrics.activeReflectionCount });
+		return none;
+	}
+
 	debugLog("merger.stage_start", {
 		reflectionTokens: metrics.reflectionTokens,
 		maxTokens: metrics.maxTokens,
@@ -572,10 +580,12 @@ async function runMergerStage(
 		modelRegistry: ctx.modelRegistry,
 		onCost,
 	}), retryOptions("merger", runtime, ctx, force));
-	if (!merged) return none;
-
-	const data = buildReflectionsRecordedData(merged, coversUpToId);
-	if (!data) return none;
+	const data = merged ? buildReflectionsRecordedData(merged, coversUpToId) : undefined;
+	if (!merged || !data) {
+		runtime.mergerNoProgress = { sessionIdentity: identity, reflectionIds };
+		return none;
+	}
+	runtime.mergerNoProgress = undefined;
 	appendEntry(pi, OM_REFLECTIONS_RECORDED, data);
 	debugLog("merger.appended", { count: merged.length, coversUpToId });
 	if (shouldNotifyWorker(runtime, ctx)) ctx.ui?.notify(

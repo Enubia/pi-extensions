@@ -317,6 +317,62 @@ describe("before_agent_start cache-aware compaction", () => {
 		}
 	});
 
+	it("keeps the model-change flag while a compaction is in flight or auto-compaction is suspended", async () => {
+		for (const [block, release] of [
+			[(runtime: Runtime) => { runtime.compactInFlight = true; }, (runtime: Runtime) => { runtime.compactInFlight = false; }],
+			[(runtime: Runtime) => { runtime.autoCompactSuspended = "failed"; }, (runtime: Runtime) => { runtime.autoCompactSuspended = undefined; }],
+		] as const) {
+			const { pi, emit } = fakePi();
+			const runtime = runtimeWith();
+			registerCacheAwareCompaction(pi as never, runtime);
+			emit("model_select", modelSelect("b", "m", { provider: "a", id: "m" }), fakeCtx().ctx);
+			block(runtime);
+			const blocked = fakeCtx({ ageMs: 1_000 });
+			await emit("before_agent_start", beforeStart(), blocked.ctx);
+			expect(blocked.compact).not.toHaveBeenCalled();
+			expect(runtime.cacheColdReason).toBe("model-change");
+			release(runtime);
+			const next = fakeCtx({ ageMs: 1_000 });
+			await emit("before_agent_start", beforeStart(), next.ctx);
+			expect(next.compact).toHaveBeenCalledTimes(1);
+			expect(runtime.cacheColdReason).toBeUndefined();
+			expect(runtime.lastColdSignal?.reason).toBe("model-change");
+		}
+	});
+
+	it("does not wait on in-flight consolidation: skips this prompt and keeps the cold signal for the next", async () => {
+		const { pi, emit } = fakePi();
+		const runtime = runtimeWith();
+		registerCacheAwareCompaction(pi as never, runtime);
+		emit("model_select", modelSelect("b", "m", { provider: "a", id: "m" }), fakeCtx().ctx);
+		runtime.consolidationInFlight = true;
+		const blocked = fakeCtx({ ageMs: 1_000 });
+		await emit("before_agent_start", beforeStart(), blocked.ctx);
+		expect(blocked.compact).not.toHaveBeenCalled();
+		expect(runtime.cacheColdReason).toBe("model-change");
+		expect(runtime.lastColdSignal).toBeUndefined();
+		runtime.consolidationInFlight = false;
+		const next = fakeCtx({ ageMs: 1_000 });
+		await emit("before_agent_start", beforeStart(), next.ctx);
+		expect(next.compact).toHaveBeenCalledTimes(1);
+		expect(runtime.lastColdSignal?.reason).toBe("model-change");
+	});
+
+	it("retries an idle-cold prompt once consolidation has finished", async () => {
+		const { pi, emit } = fakePi();
+		const runtime = runtimeWith();
+		registerCacheAwareCompaction(pi as never, runtime);
+		runtime.consolidationInFlight = true;
+		const blocked = fakeCtx({ ageMs: 6 * MIN });
+		await emit("before_agent_start", beforeStart(), blocked.ctx);
+		expect(blocked.compact).not.toHaveBeenCalled();
+		runtime.consolidationInFlight = false;
+		const next = fakeCtx({ ageMs: 6 * MIN });
+		await emit("before_agent_start", beforeStart(), next.ctx);
+		expect(next.compact).toHaveBeenCalledTimes(1);
+		expect(runtime.lastColdSignal?.reason).toBe("idle");
+	});
+
 	it("lets the prompt continue when compaction errors or throws", async () => {
 		for (const compactImpl of ["error", "throw"] as const) {
 			const { pi, emit } = fakePi();

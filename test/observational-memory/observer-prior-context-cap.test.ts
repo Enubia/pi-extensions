@@ -7,11 +7,12 @@ import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULTS, loadConfig } from "../../extensions/observational-memory/src/config.js";
 import { withDebugLogContext } from "../../extensions/observational-memory/src/debug-log.js";
+import { runObserver } from "../../extensions/observational-memory/src/agents/observer/agent.js";
 import { selectPriorObservations } from "../../extensions/observational-memory/src/agents/observer/prior-context.js";
 import { runConsolidationPipeline, type ConsolidationCtx } from "../../extensions/observational-memory/src/hooks/consolidation-trigger.js";
 import { Runtime } from "../../extensions/observational-memory/src/runtime.js";
 import { observationLineTokenCount } from "../../extensions/observational-memory/src/tokens.js";
-import { OM_REFLECTIONS_RECORDED, type Entry, type Observation } from "../../extensions/observational-memory/src/session-ledger/index.js";
+import { OM_REFLECTIONS_RECORDED, observationToSummaryLine, type Entry, type Observation } from "../../extensions/observational-memory/src/session-ledger/index.js";
 import { memoryId, observation, observationsRecordedEntry } from "./fixtures.js";
 
 const model = getBuiltinModel("openai", "gpt-4o");
@@ -120,6 +121,34 @@ describe("observer stage prior-observation cap", () => {
 		expect(lines).toHaveLength(6);
 		expect(lines[0]).toContain(`[${observations[0].id}]`);
 		expect(section).not.toContain("omitted");
+	});
+
+	it("false matches the prompt built with no cap logic, byte for byte", async () => {
+		const pipelineText = (JSON.parse(await observerPrompt(ledger(observations), { observerPriorObservationsMaxTokens: false })) as { content: Array<{ text: string }> }).content[0].text;
+		const chunk = pipelineText.slice(pipelineText.indexOf("NEW CONVERSATION CHUNK:\n") + "NEW CONVERSATION CHUNK:\n".length);
+		let directText = "";
+		await runObserver({
+			model,
+			priorReflections: [],
+			priorObservations: observations.map(observationToSummaryLine),
+			chunk,
+			allowedSourceEntryIds: ["old"],
+			streamSimple: (_model, context) => {
+				const user = context.messages.find((m) => m.role === "user");
+				directText = (user as { content: Array<{ text: string }> }).content[0].text;
+				const message: AssistantMessage = {
+					role: "assistant", api: model.api, provider: model.provider, model: model.id, timestamp: 0,
+					content: [{ type: "text", text: "Done." }], stopReason: "stop",
+					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				};
+				const stream = createAssistantMessageEventStream();
+				stream.push({ type: "done", reason: "stop", message });
+				return stream;
+			},
+		});
+		const stripTime = (text: string) => text.replace(/Current local time: [0-9: -]+/, "");
+		expect(directText).toContain(observations.map(observationToSummaryLine).join("\n"));
+		expect(stripTime(pipelineText)).toBe(stripTime(directText));
 	});
 
 	it("default cap leaves small memories untouched", async () => {
