@@ -6,7 +6,6 @@ const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const ANTHROPIC_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile";
 const ANTHROPIC_DASHBOARD_URL = "https://claude.ai/settings/usage";
 const ANTHROPIC_OAUTH_BETA = "oauth-2025-04-20";
-const CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.206";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_DASHBOARD_URL = "https://chatgpt.com/codex/settings/usage";
 const CHATGPT_DASHBOARD_URL = "https://chatgpt.com/settings/usage";
@@ -87,8 +86,6 @@ const anthropicProvider: UsageProvider = {
 		const headers = {
 			Authorization: `Bearer ${accessToken}`,
 			"anthropic-beta": ANTHROPIC_OAUTH_BETA,
-			"user-agent": CLAUDE_CODE_USER_AGENT,
-			"x-app": "cli",
 		};
 		const usage = anthropic.normalizeUsagePayload(await requestJson(ANTHROPIC_USAGE_URL, headers));
 		if (!usage) throw usageFailure("invalid-response");
