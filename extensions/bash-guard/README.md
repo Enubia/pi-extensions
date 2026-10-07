@@ -56,7 +56,7 @@ All other commands (including routine git operations) pass through unaffected.
 
 ## Install
 
-Loaded through the root package manifest. Install and update the private bundle as described in the root README.
+Loaded through the root package manifest. Install and update the bundle as described in the root README.
 
 ## Disabling (autonomous mode)
 

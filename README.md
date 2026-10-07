@@ -1,54 +1,40 @@
-# Private Pi extensions
+# Pi extensions
 
-Private `@enubia/pi-extensions` bundle for `Enubia/pi-extensions`. Not an npm release; do not publish or redistribute this bundle.
+My personal [Pi](https://github.com/earendil-works/pi) extensions. The defaults (models, providers, thresholds, optional tools such as cmux and language servers) match my own setup. Copy whatever helps, and let your agent adjust the defaults to yours. There is no support commitment.
 
-## Install and update
+## Extensions
 
-With authorized SSH access to the private repository:
+| Extension | What it does |
+| --- | --- |
+| `ask-user-question` | Tool that lets the agent ask the user structured questions |
+| `bash-guard` | Guards agent `bash` calls, stricter for subagents |
+| `cmux-notify` | cmux notification when the agent asks a question |
+| `lsp` | Language-server diagnostics, hover, definitions, references, symbols |
+| `observational-memory` | Session-ledger memory with mid-run compaction |
+| `provider-failover` | Switches provider on quota or transient failures, switches back after cooldown |
+| `session-namer` | Auto-names sessions with a small model |
+| `statusline` | Claude Code-style status line |
+| `subagent-models` | Remaps subagent models to the session's current provider |
+| `usage` | `/usage` shows Anthropic/OpenAI subscription quotas |
+
+Some extensions have their own README with configuration details.
+
+## Install
 
 ```sh
-pi install git:git@github.com:Enubia/pi-extensions.git
-pi update git:git@github.com:Enubia/pi-extensions.git
-pi update --extensions
+pi install git:github.com/Enubia/pi-extensions
 ```
-
-The source is deliberately unpinned and follows the default branch, `main`. The root manifest loads exactly ten factories, never tests or helpers. Retire loose copies before loading the package; different physical paths do not deduplicate the same extension.
-
-`/om:factor` now belongs to observational-memory and saves a global override for the selected provider; project compaction settings can override it. Retire standalone `om-factor` installations: the old entrypoint only warns, registers no command, and does not load OM. Resource filters must enable `extensions/observational-memory/src/index.ts`; excluding the old factor path no longer disables the integrated command.
-
-Personal settings stay outside this checkout in the Pi agent directory or project configuration: `settings.json`, `subagent-models.json`, optional `lsp.json`, credentials, sessions, model stores and memory runtime data. Installing this bundle does not provision or migrate them. No automatic updater or policy changes are included.
-
-Pi installs the root runtime dependencies (`shell-quote` and `proper-lockfile`, the latter serializes settings updates with Pi's settings lock). Canonical Pi packages and `typebox` are host peers, not production dependencies. No nested npm installs or lifecycle installation scripts are needed.
 
 ## Development
 
-Requires Node.js 22.19+ and npm; the Node test runner requires module-mock support. Install all development dependencies at the root:
+Requires Node.js 22.19+.
 
 ```sh
 npm ci
 npm test
-npm run test:node
-npm run test:memory
-npm run typecheck
-npm run typecheck:memory
+npm run typecheck && npm run typecheck:memory
 ```
 
-All tests, fixtures and test-only helpers live under `test/`. The Node runner excludes the observational-memory Vitest suites. Test commands automatically use disposable HOME/agent directories, clear inherited credentials and disable automatic Pi network activity. Default tests resolve local development dependencies; global Pi is not required. Canonical `pi-ai/compat` imports preserve the extension API semantics. `tsconfig.json` provides editor module resolution; both root and memory typechecks must pass.
+## License
 
-To verify a clean root-only production installation and package loading against an installed Pi host:
-
-```sh
-PI_TEST_HOST_ROOT=/path/to/installed/@earendil-works/pi-coding-agent npm run test:install
-```
-
-This integration command installs only root production dependencies in a disposable copy, checks registration order/duplicates, and never starts a model request or reads live credentials. npm may download runtime dependencies; subsequent runtime checks are offline.
-
-Optional external tools: `cmux` for notifications, `ccusage` for host usage reporting, and language-server binaries for LSP features. They are not bundled or started merely by package registration. See extension READMEs for configuration.
-
-## Provenance and licensing
-
-This repository starts with independent history: a fresh tracked-file snapshot of selected custom extensions and their tests from pi-config, not its Git history or personal configuration. Production cross-extension layout is preserved.
-
-Observational memory derives from `elpapi42/pi-observational-memory` tag `3.1.3` and `amosblomqvist/pi-observational-memory` commit `78a1efc`. Its `LICENSE` retains both verified copyright notices and full MIT terms; `NOTICE` describes the contributions. Other bundled code remains private and receives no new external redistribution license. There is no blanket root license grant.
-
-Usage fixtures contain synthetic workspaces, `.invalid` addresses, identifiers, reset schedules and quota/spend/profile data. Boundary cases and distinct account scenarios remain covered. Publication requires separate outgoing confidentiality and branch review approval.
+MIT. `observational-memory` is derived from [elpapi42/pi-observational-memory](https://github.com/elpapi42/pi-observational-memory) and [amosblomqvist/pi-observational-memory](https://github.com/amosblomqvist/pi-observational-memory), both MIT; see its `NOTICE`.
