@@ -1,11 +1,14 @@
+import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ATTENTION_USER_VAR, type AttentionState, attentionValue, DONE_TITLE, isInputPromptTool, isSubagentEnvironment, notificationArguments, osc777Notification, oscSetUserVar, promptLabel, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand } from "./core.ts";
+import { ATTENTION_USER_VAR, type AttentionState, attentionDirectory, attentionFileName, attentionValue, DONE_TITLE, isInputPromptTool, isSubagentEnvironment, notificationArguments, osc777Notification, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "./core.ts";
+import { writeAttentionRecord } from "./store.ts";
 
-type ModeContext = { mode: string };
+type AttentionContext = { mode: string; cwd: string };
 
 export default function attentionNotifyExtension(pi: ExtensionAPI) {
 	pi.on("tool_execution_start", async (event, ctx) => {
 		if (!isInputPromptTool(event.toolName) || ctx.mode !== "tui") return;
+		setAttention(ctx, "input", questionText(event.args));
 		const backend = resolveBackend(process.env);
 		if (!backend) return;
 		const label = promptLabel(sessionLabel(pi.getSessionName(), ctx.cwd), event.args);
@@ -14,26 +17,25 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 			return;
 		}
 		notifyWezTerm(label);
-		setWezTermAttention(ctx, "input");
 	});
 
 	pi.on("tool_execution_end", async (event, ctx) => {
-		if (isInputPromptTool(event.toolName)) setWezTermAttention(ctx, undefined);
+		if (isInputPromptTool(event.toolName)) setAttention(ctx, undefined);
 	});
 
 	pi.on("agent_start", async (_event, ctx) => {
-		setWezTermAttention(ctx, undefined);
+		setAttention(ctx, undefined);
 	});
 
 	pi.on("agent_settled", async (_event, ctx) => {
 		if (ctx.mode !== "tui" || isSubagentEnvironment(process.env)) return;
+		setAttention(ctx, "done");
 		if (resolveBackend(process.env) !== "wezterm") return;
 		notifyWezTerm(sessionLabel(pi.getSessionName(), ctx.cwd), DONE_TITLE);
-		setWezTermAttention(ctx, "done");
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		setWezTermAttention(ctx, undefined);
+		setAttention(ctx, undefined);
 	});
 
 	function notifyWezTerm(label: string, title?: string) {
@@ -42,8 +44,25 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 		if (sound) void pi.exec(sound[0], sound[1], { timeout: 10_000 }).catch(() => {});
 	}
 
-	function setWezTermAttention(ctx: ModeContext, state: AttentionState | undefined) {
-		if (ctx.mode !== "tui" || resolveBackend(process.env) !== "wezterm") return;
-		process.stdout.write(oscSetUserVar(ATTENTION_USER_VAR, attentionValue(state, Date.now())));
+	function setAttention(ctx: AttentionContext, state: AttentionState | undefined, question?: string) {
+		if (ctx.mode !== "tui") return;
+		const now = Date.now();
+		const token = attentionValue(state, now);
+		const pane = weztermPane(process.env);
+		writeAttentionRecord(
+			attentionDirectory(process.env, homedir()),
+			attentionFileName(process.env, process.pid),
+			state && {
+				pid: process.pid,
+				state,
+				token,
+				label: sessionLabel(pi.getSessionName(), ctx.cwd),
+				...(question ? { question } : {}),
+				cwd: ctx.cwd,
+				...(pane === undefined ? {} : { weztermPane: pane }),
+				updatedAt: now,
+			},
+		);
+		if (resolveBackend(process.env) === "wezterm") process.stdout.write(oscSetUserVar(ATTENTION_USER_VAR, token));
 	}
 }

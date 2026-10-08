@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 type Environment = Record<string, string | undefined>;
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -76,11 +78,41 @@ export function isInputPromptTool(toolName: unknown): boolean {
 	return typeof toolName === "string" && INPUT_PROMPT_TOOLS.has(toolName);
 }
 
-export function promptLabel(label: string, args: unknown): string {
+export function questionText(args: unknown): string | undefined {
 	const question = record(args)?.question;
-	if (typeof question !== "string") return label;
+	if (typeof question !== "string") return undefined;
 	const collapsed = question.replace(/\s+/g, " ").trim();
-	if (!collapsed) return label;
-	const clipped = collapsed.length > MAX_QUESTION_LENGTH ? `${collapsed.slice(0, MAX_QUESTION_LENGTH - 1).trimEnd()}…` : collapsed;
-	return `${label}: ${clipped}`;
+	if (!collapsed) return undefined;
+	return collapsed.length > MAX_QUESTION_LENGTH ? `${collapsed.slice(0, MAX_QUESTION_LENGTH - 1).trimEnd()}…` : collapsed;
+}
+
+export function promptLabel(label: string, args: unknown): string {
+	const question = questionText(args);
+	return question ? `${label}: ${question}` : label;
+}
+
+export type AttentionRecord = {
+	pid: number;
+	state: AttentionState;
+	token: string;
+	label: string;
+	question?: string;
+	cwd: string;
+	weztermPane?: number;
+	updatedAt: number;
+};
+
+export function attentionDirectory(environment: Environment, home: string): string {
+	return environment.PI_ATTENTION_DIR?.trim() || join(home, ".pi", "agent", "attention");
+}
+
+export function weztermPane(environment: Environment): number | undefined {
+	if (!isWezTermEnvironment(environment) || !environment.WEZTERM_PANE?.trim()) return undefined;
+	const pane = Number(environment.WEZTERM_PANE);
+	return Number.isInteger(pane) && pane >= 0 ? pane : undefined;
+}
+
+export function attentionFileName(environment: Environment, pid: number): string {
+	const pane = weztermPane(environment);
+	return pane === undefined ? `pid-${pid}.json` : `pane-${pane}.json`;
 }

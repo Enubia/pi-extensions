@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import attentionNotifyExtension from "../../extensions/attention-notify/index.ts";
+
+process.env.PI_ATTENTION_DIR = join(tmpdir(), "pi-attention-notify-missing");
 
 function decodeUserVars(written: string[]): string[] {
 	return written.flatMap((chunk) => {
@@ -148,6 +153,49 @@ test("clears the WezTerm attention user var when work resumes or the session end
 		assert.deepEqual(decodeUserVars(written), ["", "input", "", "done", ""]);
 	} finally {
 		process.stdout.write = originalWrite;
+		for (const key of keys) {
+			if (previous[key] === undefined) delete process.env[key];
+			else process.env[key] = previous[key];
+		}
+	}
+});
+
+test("mirrors attention state into the attention directory when it exists", async () => {
+	const keys = ["CMUX_WORKSPACE_ID", "CMUX_TAB_ID", "CMUX_SOCKET_PATH", "TERM_PROGRAM", "PI_SUBAGENT_ID", "WEZTERM_PANE", "TMUX", "PI_ATTENTION_DIR"] as const;
+	const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+	for (const key of keys) delete process.env[key];
+	const directory = mkdtempSync(join(tmpdir(), "pi-attention-"));
+	process.env.PI_ATTENTION_DIR = directory;
+	process.env.TERM_PROGRAM = "WezTerm";
+	process.env.WEZTERM_PANE = "7";
+	const originalWrite = process.stdout.write;
+	process.stdout.write = (() => true) as typeof process.stdout.write;
+	try {
+		const ctx = { mode: "tui", cwd: "/work/dotfiles" };
+		const tui = createPi("release prep");
+		attentionNotifyExtension(tui.pi);
+		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: { question: "Ship it?" } }, ctx);
+		assert.deepEqual(readdirSync(directory), ["pane-7.json"]);
+		const record = JSON.parse(readFileSync(join(directory, "pane-7.json"), "utf8"));
+		assert.equal(record.pid, process.pid);
+		assert.equal(record.state, "input");
+		assert.match(record.token, /^input:\d+$/);
+		assert.equal(record.label, "release prep");
+		assert.equal(record.question, "Ship it?");
+		assert.equal(record.cwd, "/work/dotfiles");
+		assert.equal(record.weztermPane, 7);
+
+		await tui.handlers.get("tool_execution_end")?.({ toolName: "ask_user_question" }, ctx);
+		assert.deepEqual(readdirSync(directory), []);
+
+		await tui.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
+		assert.equal(JSON.parse(readFileSync(join(directory, "pane-7.json"), "utf8")).state, "done");
+
+		await tui.handlers.get("session_shutdown")?.({ type: "session_shutdown" }, ctx);
+		assert.equal(existsSync(join(directory, "pane-7.json")), false);
+	} finally {
+		process.stdout.write = originalWrite;
+		rmSync(directory, { recursive: true, force: true });
 		for (const key of keys) {
 			if (previous[key] === undefined) delete process.env[key];
 			else process.env[key] = previous[key];

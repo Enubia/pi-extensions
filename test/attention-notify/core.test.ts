@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attentionValue, isCmuxEnvironment, isInputPromptTool, isWezTermEnvironment, notificationArguments, osc777Notification, oscSetUserVar, promptLabel, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand } from "../../extensions/attention-notify/core.ts";
+import { attentionDirectory, attentionFileName, attentionValue, isCmuxEnvironment, isInputPromptTool, isWezTermEnvironment, notificationArguments, osc777Notification, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "../../extensions/attention-notify/core.ts";
 
 test("uses the Pi session name, falling back to the current directory basename", () => {
 	assert.equal(sessionLabel("release prep", "/work/dotfiles"), "release prep");
@@ -64,4 +64,20 @@ test("encodes attention state as a timestamped WezTerm user var", () => {
 	assert.equal(attentionValue("done", 42), "done:42");
 	assert.equal(attentionValue(undefined, 42), "");
 	assert.equal(oscSetUserVar("pi_attention", "input:1"), "\x1b]1337;SetUserVar=pi_attention=aW5wdXQ6MQ==\x07");
+});
+
+test("locates attention records per WezTerm pane, falling back to the process id", () => {
+	assert.equal(attentionDirectory({}, "/home/me"), "/home/me/.pi/agent/attention");
+	assert.equal(attentionDirectory({ PI_ATTENTION_DIR: "/tmp/attention" }, "/home/me"), "/tmp/attention");
+	assert.equal(weztermPane({ TERM_PROGRAM: "WezTerm", WEZTERM_PANE: "12" }), 12);
+	assert.equal(weztermPane({ WEZTERM_PANE: "12", TMUX: "/tmp/tmux" }), undefined);
+	assert.equal(weztermPane({ TERM_PROGRAM: "WezTerm", WEZTERM_PANE: "x" }), undefined);
+	assert.equal(attentionFileName({ TERM_PROGRAM: "WezTerm", WEZTERM_PANE: "12" }, 99), "pane-12.json");
+	assert.equal(attentionFileName({}, 99), "pid-99.json");
+});
+
+test("extracts the collapsed question text", () => {
+	assert.equal(questionText({ question: " Ship\n it? " }), "Ship it?");
+	assert.equal(questionText({ question: "" }), undefined);
+	assert.equal(questionText(undefined), undefined);
 });

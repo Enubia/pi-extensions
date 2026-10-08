@@ -8,7 +8,7 @@ My personal [Pi](https://github.com/earendil-works/pi) extensions. The defaults 
 | --- | --- |
 | `ask-user-question` | Tool that lets the agent ask the user structured questions |
 | `bash-guard` | Guards agent `bash` calls, stricter for subagents |
-| `attention-notify` | cmux or WezTerm notification when the agent asks a question; WezTerm also notifies when the main agent finishes |
+| `attention-notify` | cmux or WezTerm notification when the agent asks a question; WezTerm also notifies when the main agent finishes. See [its README](extensions/attention-notify/README.md) |
 | `lsp` | Language-server diagnostics, hover, definitions, references, symbols |
 | `observational-memory` | Session-ledger memory with mid-run compaction |
 | `provider-failover` | Switches provider on quota or transient failures, switches back after cooldown |
@@ -18,6 +18,12 @@ My personal [Pi](https://github.com/earendil-works/pi) extensions. The defaults 
 | `usage` | `/usage` shows Anthropic/OpenAI subscription quotas |
 
 Some extensions have their own README with configuration details.
+
+## Apps
+
+| App | What it does |
+| --- | --- |
+| [`attention-bar`](apps/attention-bar/README.md) | macOS menu bar item listing sessions that need input or have finished; click to jump to the WezTerm pane |
 
 ## Install
 
