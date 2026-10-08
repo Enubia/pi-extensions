@@ -53,6 +53,18 @@ export function osc777Notification(label: string, title = NEEDS_INPUT_TITLE): st
 	return `\x1b]777;notify;${oscField(title)};${oscField(label)}\x1b\\`;
 }
 
+export const ATTENTION_USER_VAR = "pi_attention";
+
+export type AttentionState = "input" | "done";
+
+export function attentionValue(state: AttentionState | undefined, now: number): string {
+	return state ? `${state}:${now}` : "";
+}
+
+export function oscSetUserVar(name: string, value: string): string {
+	return `\x1b]1337;SetUserVar=${name}=${Buffer.from(value).toString("base64")}\x07`;
+}
+
 export function isSubagentEnvironment(environment: Environment): boolean {
 	return Boolean(environment.PI_SUBAGENT_ID);
 }

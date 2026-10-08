@@ -3,7 +3,18 @@ import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import attentionNotifyExtension from "../../extensions/attention-notify/index.ts";
 
-type LifecycleEvent = "tool_execution_start" | "agent_settled";
+function decodeUserVars(written: string[]): string[] {
+	return written.flatMap((chunk) => {
+		const match = /^\x1b\]1337;SetUserVar=pi_attention=([A-Za-z0-9+/=]*)\x07$/.exec(chunk);
+		return match ? [Buffer.from(match[1], "base64").toString().replace(/:\d+$/, "")] : [];
+	});
+}
+
+function notifications(written: string[]): string[] {
+	return written.filter((chunk) => chunk.startsWith("\x1b]777;"));
+}
+
+type LifecycleEvent = "tool_execution_start" | "tool_execution_end" | "agent_start" | "agent_settled" | "session_shutdown";
 type LifecycleHandler = (event: unknown, context: unknown) => Promise<void> | void;
 
 function createPi(sessionName: string | undefined) {
@@ -69,7 +80,8 @@ test("writes an OSC 777 notification and plays a sound in WezTerm TUI sessions",
 		attentionNotifyExtension(tui.pi);
 		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: { question: "Which option?" } }, ctx);
 		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: {} }, { ...ctx, mode: "rpc" });
-		assert.deepEqual(written, ["\x1b]777;notify;Pi: Needs Input;dotfiles: Which option?\x1b\\"]);
+		assert.deepEqual(notifications(written), ["\x1b]777;notify;Pi: Needs Input;dotfiles: Which option?\x1b\\"]);
+		assert.deepEqual(decodeUserVars(written), ["input"]);
 		const expectedSound = process.platform === "darwin" ? [["osascript", ["-e", "beep"], { timeout: 10_000 }]] : [];
 		assert.deepEqual(tui.executions, expectedSound);
 	} finally {
@@ -100,7 +112,40 @@ test("notifies on agent_settled in WezTerm TUI main sessions only", async () => 
 		await tui.handlers.get("agent_settled")?.({ type: "agent_settled" }, { ...ctx, mode: "rpc" });
 		process.env.PI_SUBAGENT_ID = "child";
 		await tui.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
-		assert.deepEqual(written, ["\x1b]777;notify;Pi: Done;release prep\x1b\\"]);
+		assert.deepEqual(notifications(written), ["\x1b]777;notify;Pi: Done;release prep\x1b\\"]);
+		assert.deepEqual(decodeUserVars(written), ["done"]);
+	} finally {
+		process.stdout.write = originalWrite;
+		for (const key of keys) {
+			if (previous[key] === undefined) delete process.env[key];
+			else process.env[key] = previous[key];
+		}
+	}
+});
+
+test("clears the WezTerm attention user var when work resumes or the session ends", async () => {
+	const keys = ["CMUX_WORKSPACE_ID", "CMUX_TAB_ID", "CMUX_SOCKET_PATH", "TERM_PROGRAM", "PI_SUBAGENT_ID"] as const;
+	const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+	for (const key of keys) delete process.env[key];
+	process.env.TERM_PROGRAM = "WezTerm";
+	const originalWrite = process.stdout.write;
+	const written: string[] = [];
+	process.stdout.write = ((chunk: string) => {
+		written.push(chunk);
+		return true;
+	}) as typeof process.stdout.write;
+	try {
+		const ctx = { mode: "tui", cwd: "/work/dotfiles" };
+		const tui = createPi(undefined);
+		attentionNotifyExtension(tui.pi);
+		await tui.handlers.get("agent_start")?.({ type: "agent_start" }, ctx);
+		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: {} }, ctx);
+		await tui.handlers.get("tool_execution_end")?.({ toolName: "ask_user_question" }, ctx);
+		await tui.handlers.get("tool_execution_end")?.({ toolName: "bash" }, ctx);
+		await tui.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
+		await tui.handlers.get("session_shutdown")?.({ type: "session_shutdown" }, ctx);
+		await tui.handlers.get("agent_start")?.({ type: "agent_start" }, { ...ctx, mode: "rpc" });
+		assert.deepEqual(decodeUserVars(written), ["", "input", "", "done", ""]);
 	} finally {
 		process.stdout.write = originalWrite;
 		for (const key of keys) {

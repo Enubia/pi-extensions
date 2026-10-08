@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isCmuxEnvironment, isInputPromptTool, isWezTermEnvironment, notificationArguments, osc777Notification, promptLabel, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand } from "../../extensions/attention-notify/core.ts";
+import { attentionValue, isCmuxEnvironment, isInputPromptTool, isWezTermEnvironment, notificationArguments, osc777Notification, oscSetUserVar, promptLabel, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand } from "../../extensions/attention-notify/core.ts";
 
 test("uses the Pi session name, falling back to the current directory basename", () => {
 	assert.equal(sessionLabel("release prep", "/work/dotfiles"), "release prep");
@@ -58,4 +58,10 @@ test("uses the bundled cmux CLI when available and constructs concise notificati
 	assert.equal(resolveCmuxCli({ CMUX_BUNDLED_CLI_PATH: "/Applications/cmux.app/Contents/Resources/bin/cmux" }), "/Applications/cmux.app/Contents/Resources/bin/cmux");
 	assert.equal(resolveCmuxCli({ CMUX_BUNDLED_CLI_PATH: "  " }), "cmux");
 	assert.deepEqual(notificationArguments("release prep"), ["notify", "--title", "Pi: Needs Input", "--body", "release prep"]);
+});
+
+test("encodes attention state as a timestamped WezTerm user var", () => {
+	assert.equal(attentionValue("done", 42), "done:42");
+	assert.equal(attentionValue(undefined, 42), "");
+	assert.equal(oscSetUserVar("pi_attention", "input:1"), "\x1b]1337;SetUserVar=pi_attention=aW5wdXQ6MQ==\x07");
 });
