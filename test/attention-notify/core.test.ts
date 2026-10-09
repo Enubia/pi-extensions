@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attentionDirectory, attentionFileName, attentionValue, isCmuxEnvironment, isInputPromptTool, isWezTermEnvironment, notificationArguments, osc777Notification, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "../../extensions/attention-notify/core.ts";
+import { attentionDirectory, attentionFileName, attentionValue, isCmuxEnvironment, isInputPromptTool, isWezTermEnvironment, notificationArguments, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "../../extensions/attention-notify/core.ts";
 
 test("uses the Pi session name, falling back to the current directory basename", () => {
 	assert.equal(sessionLabel("release prep", "/work/dotfiles"), "release prep");
@@ -26,12 +26,6 @@ test("prefers cmux over WezTerm and returns nothing for other terminals", () => 
 	assert.equal(resolveBackend({ CMUX_WORKSPACE_ID: "w", TERM_PROGRAM: "WezTerm" }), "cmux");
 	assert.equal(resolveBackend({ TERM_PROGRAM: "WezTerm" }), "wezterm");
 	assert.equal(resolveBackend({ TERM_PROGRAM: "ghostty" }), undefined);
-});
-
-test("builds an OSC 777 notification with separators and control characters neutralized", () => {
-	assert.equal(osc777Notification("release prep: Ship?"), "\x1b]777;notify;Pi: Needs Input;release prep: Ship?\x1b\\");
-	assert.equal(osc777Notification("a;b\x1b\x07c"), "\x1b]777;notify;Pi: Needs Input;a,b  c\x1b\\");
-	assert.equal(osc777Notification("release prep", "Pi: Done"), "\x1b]777;notify;Pi: Done;release prep\x1b\\");
 });
 
 test("plays a system sound only on macOS", () => {

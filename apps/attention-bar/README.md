@@ -1,6 +1,6 @@
 # Pi Attention menu bar app
 
-A macOS menu bar item that lists Pi sessions waiting for input (`?`) or finished (`✓`). It stays visible after notifications fade. Requires macOS 13+ and Swift.
+A macOS menu bar item that lists Pi sessions waiting for input (`?`) or finished (`✓`). Requires macOS 13+ and Swift.
 
 ```sh
 apps/attention-bar/install.sh    # builds, installs ~/Applications/Pi Attention.app, starts it at login

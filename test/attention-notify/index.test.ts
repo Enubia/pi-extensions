@@ -19,6 +19,8 @@ function notifications(written: string[]): string[] {
 	return written.filter((chunk) => chunk.startsWith("\x1b]777;"));
 }
 
+const expectedBeep = process.platform === "darwin" ? [["osascript", ["-e", "beep"], { timeout: 10_000 }]] : [];
+
 type LifecycleEvent = "tool_execution_start" | "tool_execution_end" | "agent_start" | "agent_settled" | "session_shutdown";
 type LifecycleHandler = (event: unknown, context: unknown) => Promise<void> | void;
 
@@ -68,7 +70,7 @@ test("notifies immediately when ask_user_question starts, and only in cmux TUI s
 	}
 });
 
-test("writes an OSC 777 notification and plays a sound in WezTerm TUI sessions", async () => {
+test("beeps without a notification popup when input is needed in WezTerm TUI sessions", async () => {
 	const keys = ["CMUX_WORKSPACE_ID", "CMUX_TAB_ID", "CMUX_SOCKET_PATH", "TERM_PROGRAM"] as const;
 	const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 	for (const key of keys) delete process.env[key];
@@ -85,10 +87,9 @@ test("writes an OSC 777 notification and plays a sound in WezTerm TUI sessions",
 		attentionNotifyExtension(tui.pi);
 		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: { question: "Which option?" } }, ctx);
 		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: {} }, { ...ctx, mode: "rpc" });
-		assert.deepEqual(notifications(written), ["\x1b]777;notify;Pi: Needs Input;dotfiles: Which option?\x1b\\"]);
+		assert.deepEqual(notifications(written), []);
 		assert.deepEqual(decodeUserVars(written), ["input"]);
-		const expectedSound = process.platform === "darwin" ? [["osascript", ["-e", "beep"], { timeout: 10_000 }]] : [];
-		assert.deepEqual(tui.executions, expectedSound);
+		assert.deepEqual(tui.executions, expectedBeep);
 	} finally {
 		process.stdout.write = originalWrite;
 		for (const key of keys) {
@@ -98,7 +99,7 @@ test("writes an OSC 777 notification and plays a sound in WezTerm TUI sessions",
 	}
 });
 
-test("notifies on agent_settled in WezTerm TUI main sessions only", async () => {
+test("beeps on agent_settled in WezTerm TUI main sessions only", async () => {
 	const keys = ["CMUX_WORKSPACE_ID", "CMUX_TAB_ID", "CMUX_SOCKET_PATH", "TERM_PROGRAM", "PI_SUBAGENT_ID"] as const;
 	const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 	for (const key of keys) delete process.env[key];
@@ -117,8 +118,9 @@ test("notifies on agent_settled in WezTerm TUI main sessions only", async () => 
 		await tui.handlers.get("agent_settled")?.({ type: "agent_settled" }, { ...ctx, mode: "rpc" });
 		process.env.PI_SUBAGENT_ID = "child";
 		await tui.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
-		assert.deepEqual(notifications(written), ["\x1b]777;notify;Pi: Done;release prep\x1b\\"]);
+		assert.deepEqual(notifications(written), []);
 		assert.deepEqual(decodeUserVars(written), ["done"]);
+		assert.deepEqual(tui.executions, expectedBeep);
 	} finally {
 		process.stdout.write = originalWrite;
 		for (const key of keys) {

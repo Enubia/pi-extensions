@@ -4,7 +4,8 @@ Tells you when a TUI session needs you. "Needs input" fires when `ask_user_quest
 
 | Signal | When | Terminal |
 | --- | --- | --- |
-| Notification + beep | Needs input, done | WezTerm (OSC 777), cmux (`cmux notify`, needs input only) |
+| Beep | Needs input, done | WezTerm (macOS) |
+| Notification | Needs input | cmux (`cmux notify`) |
 | `pi_attention` user var | Needs input, done | WezTerm |
 | Attention record | Needs input, done | Any, only if `~/.pi/agent/attention/` exists |
 

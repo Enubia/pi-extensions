@@ -36,7 +36,6 @@ export function resolveCmuxCli(environment: Environment): string {
 }
 
 export const NEEDS_INPUT_TITLE = "Pi: Needs Input";
-export const DONE_TITLE = "Pi: Done";
 
 export function notificationArguments(label: string, title = NEEDS_INPUT_TITLE): string[] {
 	return ["notify", "--title", title, "--body", label];
@@ -45,14 +44,6 @@ export function notificationArguments(label: string, title = NEEDS_INPUT_TITLE):
 export function soundCommand(platform: NodeJS.Platform): [string, string[]] | undefined {
 	if (platform !== "darwin") return undefined;
 	return ["osascript", ["-e", "beep"]];
-}
-
-function oscField(value: string): string {
-	return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").replace(/;/g, ",");
-}
-
-export function osc777Notification(label: string, title = NEEDS_INPUT_TITLE): string {
-	return `\x1b]777;notify;${oscField(title)};${oscField(label)}\x1b\\`;
 }
 
 export const ATTENTION_USER_VAR = "pi_attention";

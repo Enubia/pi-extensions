@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ATTENTION_USER_VAR, type AttentionState, attentionDirectory, attentionFileName, attentionValue, DONE_TITLE, isInputPromptTool, isSubagentEnvironment, notificationArguments, osc777Notification, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "./core.ts";
+import { ATTENTION_USER_VAR, type AttentionState, attentionDirectory, attentionFileName, attentionValue, isInputPromptTool, isSubagentEnvironment, notificationArguments, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "./core.ts";
 import { writeAttentionRecord } from "./store.ts";
 
 type AttentionContext = { mode: string; cwd: string };
@@ -11,12 +11,12 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 		setAttention(ctx, "input", questionText(event.args));
 		const backend = resolveBackend(process.env);
 		if (!backend) return;
-		const label = promptLabel(sessionLabel(pi.getSessionName(), ctx.cwd), event.args);
 		if (backend === "cmux") {
+			const label = promptLabel(sessionLabel(pi.getSessionName(), ctx.cwd), event.args);
 			void pi.exec(resolveCmuxCli(process.env), notificationArguments(label), { timeout: 10_000 }).catch(() => {});
 			return;
 		}
-		notifyWezTerm(label);
+		beep();
 	});
 
 	pi.on("tool_execution_end", async (event, ctx) => {
@@ -30,16 +30,14 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 	pi.on("agent_settled", async (_event, ctx) => {
 		if (ctx.mode !== "tui" || isSubagentEnvironment(process.env)) return;
 		setAttention(ctx, "done");
-		if (resolveBackend(process.env) !== "wezterm") return;
-		notifyWezTerm(sessionLabel(pi.getSessionName(), ctx.cwd), DONE_TITLE);
+		if (resolveBackend(process.env) === "wezterm") beep();
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		setAttention(ctx, undefined);
 	});
 
-	function notifyWezTerm(label: string, title?: string) {
-		process.stdout.write(osc777Notification(label, title));
+	function beep() {
 		const sound = soundCommand(process.platform);
 		if (sound) void pi.exec(sound[0], sound[1], { timeout: 10_000 }).catch(() => {});
 	}
