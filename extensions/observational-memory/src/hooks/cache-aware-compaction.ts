@@ -107,8 +107,8 @@ export function registerCacheAwareCompaction(pi: ExtensionAPI, runtime: Runtime)
 		return undefined;
 	});
 
-	pi.on("before_agent_start", async (_event, ctx) => {
-		if (!gate(runtime, ctx)) return;
+	pi.on("input", async (_event, ctx) => {
+		if (!ctx.isIdle() || !gate(runtime, ctx)) return;
 		if (runtime.compactInFlight || runtime.autoCompactSuspended || runtime.consolidationInFlight) return;
 		const pending = runtime.cacheColdReason;
 		const cacheCtx = ctx as unknown as CacheCtx;

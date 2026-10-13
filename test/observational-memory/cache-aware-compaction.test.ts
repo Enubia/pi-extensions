@@ -51,6 +51,7 @@ function fakeCtx(options: {
 	progress?: number;
 	promptCache?: { short?: number; long?: number } | undefined;
 	hasUI?: boolean;
+	idle?: boolean;
 	entries?: unknown[];
 	compactImpl?: "complete" | "error" | "throw" | "manual";
 } = {}) {
@@ -74,6 +75,7 @@ function fakeCtx(options: {
 		ctx: {
 			cwd: "/tmp",
 			hasUI: options.hasUI ?? true,
+			isIdle: () => options.idle ?? true,
 			ui: { notify },
 			model: { provider: "anthropic", id: "m", contextWindow: 200_000, promptCache: "promptCache" in options ? options.promptCache : { short: 300 } },
 			getContextUsage: () => ({ tokens: null, contextWindow: undefined }),
@@ -91,8 +93,8 @@ function modelSelect(provider: string, id: string, previous?: { provider: string
 	return { type: "model_select", model: { provider, id }, previousModel: previous, source: "set" };
 }
 
-function beforeStart(prompt = "hi") {
-	return { type: "before_agent_start", prompt, images: [{ type: "image" }] };
+function userInput(text = "hi") {
+	return { type: "input", text, images: [{ type: "image" }], source: "interactive" };
 }
 
 describe("cachePolicyTtlMs", () => {
@@ -120,14 +122,14 @@ describe("lastAssistantTimestamp", () => {
 	});
 });
 
-describe("before_agent_start cache-aware compaction", () => {
+describe("pre-request cache-aware compaction", () => {
 	it("compacts before the request after an idle gap longer than the TTL and waits for completion", async () => {
 		const { pi, emit } = fakePi();
 		const runtime = runtimeWith();
 		registerCacheAwareCompaction(pi as never, runtime);
 		const { ctx, compact, pending } = fakeCtx({ ageMs: 6 * MIN, compactImpl: "manual" });
 		let settled = false;
-		const result = Promise.resolve(emit("before_agent_start", beforeStart(), ctx)).then((value) => {
+		const result = Promise.resolve(emit("input", userInput(), ctx)).then((value) => {
 			settled = true;
 			return value;
 		});
@@ -147,15 +149,26 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		const { ctx } = fakeCtx({ ageMs: 6 * MIN });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(pi.sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("leaves input queued into a running agent alone", async () => {
+		const { pi, emit } = fakePi();
+		const runtime = runtimeWith();
+		registerCacheAwareCompaction(pi as never, runtime);
+		runtime.cacheColdReason = "model-change";
+		const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN, idle: false });
+		await emit("input", { ...userInput(), streamingBehavior: "followUp" }, ctx);
+		expect(compact).not.toHaveBeenCalled();
+		expect(runtime.cacheColdReason).toBe("model-change");
 	});
 
 	it("does not compact when the cache is still warm", async () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		const { ctx, compact } = fakeCtx({ ageMs: 4 * MIN });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).not.toHaveBeenCalled();
 	});
 
@@ -163,7 +176,7 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		const { ctx, compact } = fakeCtx({ ageMs: 6 * MIN, progress: SOFT - 50 });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).not.toHaveBeenCalled();
 	});
 
@@ -171,7 +184,7 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		const { ctx, compact } = fakeCtx({ ageMs: 6 * MIN, progress: SOFT });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).toHaveBeenCalledTimes(1);
 	});
 
@@ -179,10 +192,10 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith({ softFraction: 0.5 }));
 		const below = fakeCtx({ ageMs: 6 * MIN, progress: 499 });
-		await emit("before_agent_start", beforeStart(), below.ctx);
+		await emit("input", userInput(), below.ctx);
 		expect(below.compact).not.toHaveBeenCalled();
 		const at = fakeCtx({ ageMs: 6 * MIN, progress: 500 });
-		await emit("before_agent_start", beforeStart(), at.ctx);
+		await emit("input", userInput(), at.ctx);
 		expect(at.compact).toHaveBeenCalledTimes(1);
 	});
 
@@ -191,7 +204,7 @@ describe("before_agent_start cache-aware compaction", () => {
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		for (const promptCache of [undefined, {}, { long: 3600 }]) {
 			const { ctx, compact } = fakeCtx({ ageMs: 24 * 60 * MIN, promptCache });
-			await emit("before_agent_start", beforeStart(), ctx);
+			await emit("input", userInput(), ctx);
 			expect(compact).not.toHaveBeenCalled();
 		}
 	});
@@ -200,10 +213,10 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith({ idle: 120 }));
 		const cold = fakeCtx({ ageMs: 3 * MIN, promptCache: undefined });
-		await emit("before_agent_start", beforeStart(), cold.ctx);
+		await emit("input", userInput(), cold.ctx);
 		expect(cold.compact).toHaveBeenCalledTimes(1);
 		const warm = fakeCtx({ ageMs: MIN, promptCache: undefined });
-		await emit("before_agent_start", beforeStart(), warm.ctx);
+		await emit("input", userInput(), warm.ctx);
 		expect(warm.compact).not.toHaveBeenCalled();
 	});
 
@@ -211,7 +224,7 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith({ idle: false }));
 		const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).not.toHaveBeenCalled();
 	});
 
@@ -221,7 +234,7 @@ describe("before_agent_start cache-aware compaction", () => {
 		registerCacheAwareCompaction(pi as never, runtime);
 		emit("model_select", modelSelect("openai", "gpt", { provider: "anthropic", id: "m" }), fakeCtx().ctx);
 		const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).not.toHaveBeenCalled();
 		expect(runtime.cacheColdReason).toBeUndefined();
 	});
@@ -236,13 +249,13 @@ describe("before_agent_start cache-aware compaction", () => {
 			setup(runtime);
 			registerCacheAwareCompaction(pi as never, runtime);
 			const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN });
-			await emit("before_agent_start", beforeStart(), ctx);
+			await emit("input", userInput(), ctx);
 			expect(compact).not.toHaveBeenCalled();
 		}
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN, hasUI: false });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).not.toHaveBeenCalled();
 	});
 
@@ -257,7 +270,7 @@ describe("before_agent_start cache-aware compaction", () => {
 			emit("model_select", modelSelect(next.provider, next.id, previous), fakeCtx().ctx);
 			expect(runtime.cacheColdReason).toBe("model-change");
 			const { ctx, compact } = fakeCtx({ ageMs: 1_000 });
-			await emit("before_agent_start", beforeStart(), ctx);
+			await emit("input", userInput(), ctx);
 			expect(compact).toHaveBeenCalledTimes(1);
 			expect(runtime.cacheColdReason).toBeUndefined();
 			expect(runtime.lastColdSignal?.reason).toBe("model-change");
@@ -285,7 +298,7 @@ describe("before_agent_start cache-aware compaction", () => {
 		registerCacheAwareCompaction(pi as never, runtime);
 		emit("model_select", modelSelect("b", "m", { provider: "a", id: "m" }), fakeCtx().ctx);
 		const { ctx, compact } = fakeCtx({ progress: SOFT - 100 });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).not.toHaveBeenCalled();
 		expect(runtime.cacheColdReason).toBeUndefined();
 	});
@@ -295,9 +308,9 @@ describe("before_agent_start cache-aware compaction", () => {
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		emit("model_select", modelSelect("b", "m", { provider: "a", id: "m" }), fakeCtx().ctx);
 		const first = fakeCtx({ ageMs: 1_000 });
-		await emit("before_agent_start", beforeStart(), first.ctx);
+		await emit("input", userInput(), first.ctx);
 		const second = fakeCtx({ ageMs: 1_000 });
-		await emit("before_agent_start", beforeStart(), second.ctx);
+		await emit("input", userInput(), second.ctx);
 		expect(first.compact).toHaveBeenCalledTimes(1);
 		expect(second.compact).not.toHaveBeenCalled();
 	});
@@ -312,7 +325,7 @@ describe("before_agent_start cache-aware compaction", () => {
 			setup(runtime);
 			registerCacheAwareCompaction(pi as never, runtime);
 			const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN });
-			await emit("before_agent_start", beforeStart(), ctx);
+			await emit("input", userInput(), ctx);
 			expect(compact).not.toHaveBeenCalled();
 		}
 	});
@@ -328,12 +341,12 @@ describe("before_agent_start cache-aware compaction", () => {
 			emit("model_select", modelSelect("b", "m", { provider: "a", id: "m" }), fakeCtx().ctx);
 			block(runtime);
 			const blocked = fakeCtx({ ageMs: 1_000 });
-			await emit("before_agent_start", beforeStart(), blocked.ctx);
+			await emit("input", userInput(), blocked.ctx);
 			expect(blocked.compact).not.toHaveBeenCalled();
 			expect(runtime.cacheColdReason).toBe("model-change");
 			release(runtime);
 			const next = fakeCtx({ ageMs: 1_000 });
-			await emit("before_agent_start", beforeStart(), next.ctx);
+			await emit("input", userInput(), next.ctx);
 			expect(next.compact).toHaveBeenCalledTimes(1);
 			expect(runtime.cacheColdReason).toBeUndefined();
 			expect(runtime.lastColdSignal?.reason).toBe("model-change");
@@ -347,13 +360,13 @@ describe("before_agent_start cache-aware compaction", () => {
 		emit("model_select", modelSelect("b", "m", { provider: "a", id: "m" }), fakeCtx().ctx);
 		runtime.consolidationInFlight = true;
 		const blocked = fakeCtx({ ageMs: 1_000 });
-		await emit("before_agent_start", beforeStart(), blocked.ctx);
+		await emit("input", userInput(), blocked.ctx);
 		expect(blocked.compact).not.toHaveBeenCalled();
 		expect(runtime.cacheColdReason).toBe("model-change");
 		expect(runtime.lastColdSignal).toBeUndefined();
 		runtime.consolidationInFlight = false;
 		const next = fakeCtx({ ageMs: 1_000 });
-		await emit("before_agent_start", beforeStart(), next.ctx);
+		await emit("input", userInput(), next.ctx);
 		expect(next.compact).toHaveBeenCalledTimes(1);
 		expect(runtime.lastColdSignal?.reason).toBe("model-change");
 	});
@@ -364,11 +377,11 @@ describe("before_agent_start cache-aware compaction", () => {
 		registerCacheAwareCompaction(pi as never, runtime);
 		runtime.consolidationInFlight = true;
 		const blocked = fakeCtx({ ageMs: 6 * MIN });
-		await emit("before_agent_start", beforeStart(), blocked.ctx);
+		await emit("input", userInput(), blocked.ctx);
 		expect(blocked.compact).not.toHaveBeenCalled();
 		runtime.consolidationInFlight = false;
 		const next = fakeCtx({ ageMs: 6 * MIN });
-		await emit("before_agent_start", beforeStart(), next.ctx);
+		await emit("input", userInput(), next.ctx);
 		expect(next.compact).toHaveBeenCalledTimes(1);
 		expect(runtime.lastColdSignal?.reason).toBe("idle");
 	});
@@ -379,7 +392,7 @@ describe("before_agent_start cache-aware compaction", () => {
 			const runtime = runtimeWith();
 			registerCacheAwareCompaction(pi as never, runtime);
 			const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN, compactImpl });
-			await expect(Promise.resolve(emit("before_agent_start", beforeStart(), ctx))).resolves.toBeUndefined();
+			await expect(Promise.resolve(emit("input", userInput(), ctx))).resolves.toBeUndefined();
 			expect(compact).toHaveBeenCalledTimes(1);
 			expect(runtime.compactInFlight).toBe(false);
 			expect(runtime.autoCompactSuspended).toBeUndefined();
@@ -390,9 +403,9 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		const { ctx } = fakeCtx({ ageMs: 60 * MIN });
-		const event = beforeStart("keep me");
+		const event = userInput("keep me");
 		const snapshot = JSON.stringify(event);
-		const result = await emit("before_agent_start", event, ctx);
+		const result = await emit("input", event, ctx);
 		expect(result).toBeUndefined();
 		expect(JSON.stringify(event)).toBe(snapshot);
 	});
@@ -401,7 +414,7 @@ describe("before_agent_start cache-aware compaction", () => {
 		const { pi, emit } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
 		const { ctx, notify } = fakeCtx({ ageMs: 6 * MIN, progress: 700 });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(String(notify.mock.calls[0][0])).toContain("prompt cache cold (idle)");
 		expect(String(notify.mock.calls[0][0])).toContain("~700 tokens");
 	});
@@ -439,7 +452,7 @@ describe("cache_warming_decision", () => {
 		const first = fakeCtx({ progress: SOFT - 100 });
 		emit("cache_warming_decision", decision("warm"), first.ctx);
 		const { ctx, compact } = fakeCtx({ ageMs: 60 * MIN });
-		await emit("before_agent_start", beforeStart(), ctx);
+		await emit("input", userInput(), ctx);
 		expect(compact).not.toHaveBeenCalled();
 	});
 
@@ -455,12 +468,12 @@ describe("cache_warming_decision", () => {
 
 			vi.setSystemTime(start + 4 * MIN);
 			const early = fakeCtx({ now: start + 4 * MIN, ageMs: 60 * MIN });
-			await emit("before_agent_start", beforeStart(), early.ctx);
+			await emit("input", userInput(), early.ctx);
 			expect(early.compact).not.toHaveBeenCalled();
 
 			vi.setSystemTime(start + 6 * MIN);
 			const late = fakeCtx({ now: start + 6 * MIN, ageMs: 60 * MIN });
-			await emit("before_agent_start", beforeStart(), late.ctx);
+			await emit("input", userInput(), late.ctx);
 			expect(late.compact).toHaveBeenCalledTimes(1);
 		} finally {
 			vi.useRealTimers();
@@ -477,7 +490,7 @@ describe("cache_warming_decision", () => {
 	it("registers every hook it needs", () => {
 		const { pi, registered } = fakePi();
 		registerCacheAwareCompaction(pi as never, runtimeWith());
-		expect(registered().sort()).toEqual(["before_agent_start", "cache_warming_decision", "model_select"]);
+		expect(registered().sort()).toEqual(["cache_warming_decision", "input", "model_select"]);
 	});
 });
 
@@ -513,7 +526,7 @@ describe("coexistence with the hard threshold trigger", () => {
 		turnEnd.emit("turn_end", toolTurn, first.ctx);
 		expect(runtime.compactInFlight).toBe(true);
 		const second = fakeCtx({ progress: HARD, ageMs: 60 * MIN });
-		await cache.emit("before_agent_start", beforeStart(), second.ctx);
+		await cache.emit("input", userInput(), second.ctx);
 		expect(second.compact).not.toHaveBeenCalled();
 	});
 
@@ -521,7 +534,7 @@ describe("coexistence with the hard threshold trigger", () => {
 		const runtime = runtimeWith();
 		const { turnEnd, cache } = bothRegistered(runtime);
 		const pre = fakeCtx({ progress: SOFT + 100, ageMs: 60 * MIN, compactImpl: "manual" });
-		const pending = cache.emit("before_agent_start", beforeStart(), pre.ctx);
+		const pending = cache.emit("input", userInput(), pre.ctx);
 		const mid = fakeCtx({ progress: HARD });
 		turnEnd.emit("turn_end", toolTurn, mid.ctx);
 		expect(mid.compact).not.toHaveBeenCalled();
