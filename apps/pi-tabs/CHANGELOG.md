@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 (2026-10-14)
+
+### Other
+
+- rewrite README for users ([bd68b67](https://github.com/Enubia/pi-extensions/commit/bd68b67))
+
 ## 0.2.0 (2026-10-14)
 
 ### Features
