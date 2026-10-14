@@ -49,11 +49,15 @@ let ptyModule: PtyModule | undefined;
 
 function loadPty(): PtyModule {
 	if (ptyModule) return ptyModule;
-	for (const dir of ["node_modules", "node_modules.asar.unpacked"]) {
-		const candidate = path.join(vscode.env.appRoot, dir, "node-pty");
-		if (fs.existsSync(candidate)) return (ptyModule = require(candidate) as PtyModule);
+	const errors: string[] = [];
+	for (const dir of ["node_modules.asar", "node_modules"]) {
+		try {
+			return (ptyModule = require(path.join(vscode.env.appRoot, dir, "node-pty")) as PtyModule);
+		} catch (error) {
+			errors.push(`${dir}: ${(error as Error).message}`);
+		}
 	}
-	throw new Error(`node-pty not found under ${vscode.env.appRoot}`);
+	throw new Error(`node-pty not loadable:\n${errors.join("\n")}`);
 }
 
 function webviewSettings(): WebviewSettings {
@@ -147,7 +151,14 @@ async function openFile(session: Session, file: string, line = 1, column = 1) {
 function handleMessage(session: Session, message: FromWebview) {
 	switch (message.type) {
 		case "ready":
-			if (!session.proc) spawn(session, message.cols, message.rows);
+			if (session.proc) return;
+			try {
+				spawn(session, message.cols, message.rows);
+			} catch (error) {
+				session.exited = true;
+				post(session, { type: "output", data: `\x1b[31m${String((error as Error).stack ?? error).replace(/\n/g, "\r\n")}\x1b[0m\r\n` });
+				render(session);
+			}
 			return;
 		case "input":
 			if (session.exited) session.panel.dispose();
