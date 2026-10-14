@@ -1,29 +1,27 @@
-# PROTOTYPE: Pi in VS Code editor tabs (throwaway)
+# Pi in VS Code editor tabs
 
-Question: can the full Pi TUI run in a VS Code editor tab through our own xterm.js webview (node-pty → postMessage → xterm.js with WebGL) with acceptable latency, so every extension keeps working without the integrated terminal?
-
-Run:
-
-```sh
-cd apps/pi-xterm-prototype && npm install && npm start
-```
-
-In the Extension Development Host, open the **Pi** activity bar view and click `+`, or run **Pi: New Session**.
-
-What to check:
-
-- Typing latency and scroll/redraw smoothness compared with WezTerm and the integrated terminal (`piXterm.renderer`: `webgl` | `dom`)
-- Keys: Shift+Enter, Alt+Enter, Ctrl+P/O/C, Esc, Cmd+V, image paste, Cmd+C on a selection
-- `ask_user_question`, the bash-guard overlay, `/usage`, the statusline footer
-- Attention: the `❓`/`✓` markers on tabs and in the sidebar, plus notifications when the tab is not focused
-- Links: URLs and `path/to/file.ts:12` open in VS Code
-
-Sessions: closed tabs stay in the sidebar as history (newest 15 per workspace, plus "N more…"). The search icon searches every Pi session; picking one reopens it with `pi --session`. A small bridge extension (`pi/vscode-bridge.ts`, loaded with `-e` only in these tabs) tells each tab its current session file, so `/new` and `/resume` are tracked.
-
-Subagents: each tab exposes a unix socket (`PI_VSCODE_SOCKET`) that the `vscode` backend of pi-interactive-subagents (branch `feat/vscode-backend` in the fork) uses to open subagent tabs in the editor group beside the parent; they nest under the parent in the sidebar. Subagent session files are hidden from history and search. WezTerm/tmux/zellij/cmux env vars are stripped so subagents never escape into another terminal.
-
-Known gap: subagents need a multiplexer (cmux/tmux/zellij/wezterm), so the subagent tool won't work here.
+A VS Code extension that runs the full Pi TUI in editor tabs instead of the integrated terminal: node-pty → webview → xterm.js (WebGL). Every Pi extension keeps working because it is still a real terminal.
 
 ## Install
 
-`npm run install-extension` builds `pi-xterm.vsix` and installs it into the `work` VS Code profile (override with `VSCODE_PROFILE=<name>`). Re-run after changes, then reload the window. Uninstall: `code --uninstall-extension enubia.pi-xterm-prototype --profile work`.
+```sh
+cd apps/pi-xterm-prototype && npm install && npm run install-extension
+```
+
+This builds `pi-xterm.vsix` and installs it into the `work` VS Code profile (override with `VSCODE_PROFILE=<name>`). Re-run after changes, then reload the window. Uninstall: `code --uninstall-extension enubia.pi-xterm-prototype --profile work`.
+
+For development, `npm start` opens an Extension Development Host.
+
+## Usage
+
+Open the **Pi** activity bar view and click `+`, or run **Pi: New Session**. Settings live under `piXterm.*` (command, font, `macOptionIsMeta`, renderer `webgl` | `dom`).
+
+- **Sessions**: each workspace lists its open tabs, then its 15 most recent past sessions, plus "N more…". The search icon searches every Pi session; picking one reveals its tab or reopens it with `pi --session`. A small bridge extension (`pi/vscode-bridge.ts`, loaded with `-e` only in these tabs) tells each tab its current session file, so `/new` and `/resume` are tracked.
+- **Subagents**: each tab gets a unix socket (`PI_VSCODE_SOCKET`). The `vscode` backend of [pi-interactive-subagents](https://github.com/Enubia/pi-interactive-subagents) uses it to open subagent tabs in the editor group beside the parent; they nest under the parent in the sidebar, and the group closes when its last subagent tab does. Subagent sessions are hidden from history and search. WezTerm/tmux/zellij/cmux env vars are stripped so subagents never escape into another terminal.
+- **Attention**: `attention-notify` signals the tab through `pi_attention` user vars. Tabs and sidebar show `❓`/`✓`, and VS Code shows a notification when the tab is not focused. These sessions stay out of the menu bar app.
+- **Paste**: Cmd+V reads the clipboard in the extension host, so dictation tools that send a synthetic Cmd+V work.
+- **Links**: URLs and `path/to/file.ts:12` open in VS Code.
+
+## Caveat
+
+Opening the same session in two places (another tab, another window, WezTerm) does not corrupt it, but each process only sees its own messages, so the session branches. Pick the branch later with `/tree`.
