@@ -256,6 +256,11 @@ function openSessionFile(info: SessionInfo) {
 	createSession(fs.existsSync(info.cwd) ? info.cwd : os.homedir(), { resume: info });
 }
 
+function closeGroupIfEmpty(column: vscode.ViewColumn) {
+	const group = vscode.window.tabGroups.all.find((candidate) => candidate.viewColumn === column);
+	if (group && group.tabs.length === 0 && vscode.window.tabGroups.all.length > 1) void vscode.window.tabGroups.close(group);
+}
+
 function subagentColumn(parent: Session): vscode.ViewColumn {
 	const sibling = [...sessions.values()].find((session) => session.parentId === parent.id && session.panel.viewColumn);
 	if (sibling?.panel.viewColumn) return sibling.panel.viewColumn;
@@ -285,10 +290,16 @@ function createSession(cwd: string, { resume, kind = "pi", parent, title }: Crea
 			render(session);
 		}
 	});
+	let column = panel.viewColumn;
+	panel.onDidChangeViewState(() => {
+		column = panel.viewColumn ?? column;
+	});
 	panel.onDidDispose(() => {
 		if (!session.exited) session.proc?.kill();
 		sessions.delete(id);
 		tree.refresh();
+		const closedColumn = column;
+		if (session.parentId !== undefined && closedColumn) setTimeout(() => closeGroupIfEmpty(closedColumn), 0);
 	});
 	tree.refresh();
 	return session;
