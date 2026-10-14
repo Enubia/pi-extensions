@@ -6,8 +6,10 @@ Tells you when a TUI session needs you. "Needs input" fires when `ask_user_quest
 | --- | --- | --- |
 | Beep | Needs input, done | WezTerm (macOS) |
 | Notification | Needs input | cmux (`cmux notify`) |
-| `pi_attention` user var | Needs input, done | WezTerm |
-| Attention record | Needs input, done | Any, only if `~/.pi/agent/attention/` exists |
+| `pi_attention` user var | Needs input, done | WezTerm, VS Code Pi tabs |
+| Attention record | Needs input, done | Any except VS Code Pi tabs, only if `~/.pi/agent/attention/` exists |
+
+Inside a Pi tab of the VS Code extension (`PI_XTERM_SESSION` set) there is no beep and no attention record, so those sessions stay out of the menu bar app. The tab gets `pi_attention` plus `pi_attention_text` (the question, or the session label) and shows its own notification.
 
 All signals clear when the question is answered, the next prompt starts, or the session ends.
 
