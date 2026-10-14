@@ -101,6 +101,37 @@ term.parser.registerOscHandler(1337, (data) => {
 	return true;
 });
 
+const isMac = navigator.platform.toLowerCase().includes("mac");
+let lastKeyPaste = 0;
+
+term.attachCustomKeyEventHandler((event) => {
+	const pasteKey = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && event.shiftKey;
+	if (!pasteKey || event.altKey || (event.code !== "KeyV" && event.key.toLowerCase() !== "v")) return true;
+	if (event.type === "keydown") {
+		lastKeyPaste = Date.now();
+		post({ type: "pasteRequest" });
+	}
+	return false;
+});
+
+document.addEventListener(
+	"paste",
+	(event) => {
+		event.preventDefault();
+		event.stopImmediatePropagation();
+		if (Date.now() - lastKeyPaste > 1_000) post({ type: "pasteRequest" });
+	},
+	true,
+);
+
+function screenText(lines: number): string {
+	const buffer = term.buffer.active;
+	const rows: string[] = [];
+	for (let y = 0; y < buffer.length; y++) rows.push(buffer.getLine(y)?.translateToString(true) ?? "");
+	while (rows.length && !rows[rows.length - 1]) rows.pop();
+	return rows.slice(-lines).join("\n");
+}
+
 term.onTitleChange((title) => post({ type: "title", title }));
 term.onData((data) => post({ type: "input", data }));
 term.onBinary((data) => post({ type: "input", data }));
@@ -144,6 +175,12 @@ window.addEventListener("message", (event: MessageEvent<ToWebview>) => {
 			return;
 		case "focus":
 			term.focus();
+			return;
+		case "paste":
+			if (message.text) term.paste(message.text);
+			return;
+		case "read":
+			post({ type: "screen", id: message.id, text: screenText(message.lines) });
 			return;
 	}
 });

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { FromWebview, ToWebview, WebviewSettings } from "./protocol";
 import { allSessions, relativeTime, type SessionInfo, sessionLabel, sessionsForCwd, sessionsRoot } from "./session-index";
+import { startSurfaceServer, type SurfaceServer } from "./surface-server";
 
 type Pty = {
 	pid: number;
@@ -36,9 +37,16 @@ type Session = {
 	exited: boolean;
 	proc?: Pty;
 	file?: string;
+	kind: "pi" | "shell";
+	parentId?: number;
+	pendingInput: string;
 };
 
+type CreateOptions = { resume?: SessionInfo; kind?: Session["kind"]; parent?: Session; title?: string };
+
 type WorkspaceItem = vscode.TreeItem & { cwd: string };
+
+type SessionItem = vscode.TreeItem & { sessionId: number };
 
 const HISTORY_LIMIT = 15;
 
@@ -50,6 +58,11 @@ let nextId = 1;
 let extensionUri: vscode.Uri;
 let tree: SessionTree;
 let ptyModule: PtyModule | undefined;
+let surfaceServer: SurfaceServer | undefined;
+let nextReadId = 1;
+const pendingReads = new Map<number, (text: string) => void>();
+
+const FOREIGN_MUX_ENV = /^(WEZTERM_|TMUX|ZELLIJ|CMUX_|KITTY_|ITERM_|TERM_PROGRAM_VERSION$|TERM_SESSION_ID$)/;
 
 function loadPty(): PtyModule {
 	if (ptyModule) return ptyModule;
@@ -106,8 +119,10 @@ function notify(session: Session, message: string) {
 }
 
 function childEnv(session: Session): NodeJS.ProcessEnv {
-	const env: NodeJS.ProcessEnv = { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "vscode", PI_XTERM_SESSION: String(session.id) };
-	for (const key of Object.keys(env)) if (key.startsWith("ELECTRON_") || key.startsWith("VSCODE_")) delete env[key];
+	const env: NodeJS.ProcessEnv = { ...process.env };
+	for (const key of Object.keys(env)) if (key.startsWith("ELECTRON_") || key.startsWith("VSCODE_") || FOREIGN_MUX_ENV.test(key)) delete env[key];
+	Object.assign(env, { TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "vscode", PI_XTERM_SESSION: String(session.id) });
+	if (surfaceServer) Object.assign(env, { PI_VSCODE_SOCKET: surfaceServer.socket, PI_SUBAGENT_MUX: "vscode" });
 	return env;
 }
 
@@ -115,7 +130,8 @@ function spawn(session: Session, cols: number, rows: number) {
 	const shell = process.env.SHELL || "/bin/zsh";
 	const bridge = vscode.Uri.joinPath(extensionUri, "pi", "vscode-bridge.ts").fsPath;
 	const args = ["-e", bridge, ...(session.file ? ["--session", session.file] : [])];
-	const proc = loadPty().spawn(shell, ["-l", "-i", "-c", `exec ${session.command} "$@"`, "pi", ...args], {
+	const shellArgs = session.kind === "shell" ? ["-l", "-i"] : ["-l", "-i", "-c", `exec ${session.command} "$@"`, "pi", ...args];
+	const proc = loadPty().spawn(shell, shellArgs, {
 		name: "xterm-256color",
 		cols,
 		rows,
@@ -123,6 +139,10 @@ function spawn(session: Session, cols: number, rows: number) {
 		env: childEnv(session),
 	});
 	session.proc = proc;
+	if (session.pendingInput) {
+		proc.write(session.pendingInput);
+		session.pendingInput = "";
+	}
 
 	let pending = "";
 	let scheduled = false;
@@ -174,6 +194,7 @@ function handleMessage(session: Session, message: FromWebview) {
 			if (!session.exited) session.proc?.resize(message.cols, message.rows);
 			return;
 		case "title":
+			if (session.parentId !== undefined) return;
 			session.title = message.title || session.defaultTitle;
 			render(session);
 			return;
@@ -197,6 +218,12 @@ function handleMessage(session: Session, message: FromWebview) {
 			return;
 		case "openFile":
 			void openFile(session, message.path, message.line, message.column);
+			return;
+		case "pasteRequest":
+			void vscode.env.clipboard.readText().then((text) => post(session, { type: "paste", text }));
+			return;
+		case "screen":
+			pendingReads.get(message.id)?.(message.text);
 			return;
 	}
 }
@@ -226,20 +253,27 @@ html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: 
 function openSessionFile(info: SessionInfo) {
 	const open = [...sessions.values()].find((session) => session.file === info.file && !session.exited);
 	if (open) return open.panel.reveal();
-	createSession(fs.existsSync(info.cwd) ? info.cwd : os.homedir(), info);
+	createSession(fs.existsSync(info.cwd) ? info.cwd : os.homedir(), { resume: info });
 }
 
-function createSession(cwd: string, resume?: SessionInfo): Session {
+function subagentColumn(parent: Session): vscode.ViewColumn {
+	const sibling = [...sessions.values()].find((session) => session.parentId === parent.id && session.panel.viewColumn);
+	if (sibling?.panel.viewColumn) return sibling.panel.viewColumn;
+	return Math.min((parent.panel.viewColumn ?? vscode.ViewColumn.One) + 1, vscode.ViewColumn.Nine);
+}
+
+function createSession(cwd: string, { resume, kind = "pi", parent, title }: CreateOptions = {}): Session {
 	const id = nextId++;
-	const defaultTitle = resume ? sessionLabel(resume) : `pi · ${path.basename(cwd)}`;
-	const panel = vscode.window.createWebviewPanel("piXterm", defaultTitle, vscode.ViewColumn.Active, {
+	const defaultTitle = title ?? (resume ? sessionLabel(resume) : `pi · ${path.basename(cwd)}`);
+	const placement = parent ? { viewColumn: subagentColumn(parent), preserveFocus: true } : vscode.ViewColumn.Active;
+	const panel = vscode.window.createWebviewPanel("piXterm", defaultTitle, placement, {
 		enableScripts: true,
 		retainContextWhenHidden: true,
 		localResourceRoots: [extensionUri],
 	});
 	panel.iconPath = vscode.Uri.joinPath(extensionUri, "media", "pi.svg");
 	const command = vscode.workspace.getConfiguration("piXterm").get<string>("command") || "pi";
-	const session: Session = { id, cwd, panel, command, defaultTitle, title: defaultTitle, busy: false, exited: false, file: resume?.file };
+	const session: Session = { id, cwd, panel, command, defaultTitle, title: defaultTitle, busy: false, exited: false, file: resume?.file, kind, parentId: parent?.id, pendingInput: "" };
 	sessions.set(id, session);
 	panel.webview.html = webviewHtml(panel.webview, webviewSettings());
 	panel.webview.onDidReceiveMessage((message: FromWebview) => handleMessage(session, message));
@@ -301,7 +335,7 @@ async function onAttentionFile(file: string) {
 	if (record.state === "input") {
 		session.attention = "input";
 		notify(session, `Pi needs input: ${record.question || record.label}`);
-	} else if (record.state === "done" && !isWatching(session)) {
+	} else if (record.state === "done" && session.parentId === undefined && !isWatching(session)) {
 		session.attention = "done";
 		notify(session, `Pi finished: ${record.label}`);
 	}
@@ -338,8 +372,9 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 
 	async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
 		if (!element) return this.workspaces();
+		if ("sessionId" in element) return children((element as SessionItem).sessionId).map((session) => this.sessionItem(session));
 		const cwd = (element as WorkspaceItem).cwd;
-		const open = [...sessions.values()].filter((session) => session.cwd === cwd);
+		const open = rootSessions().filter((session) => session.cwd === cwd);
 		const openFiles = new Set(open.map((session) => session.file));
 		const history = (await sessionsForCwd(cwd)).filter((info) => !openFiles.has(info.file));
 		const items = [...open.map((session) => this.sessionItem(session)), ...history.slice(0, HISTORY_LIMIT).map((info) => this.historyItem(info))];
@@ -349,7 +384,7 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 
 	private workspaces(): WorkspaceItem[] {
 		const folders = (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath);
-		const cwds = [...new Set([...folders, ...[...sessions.values()].map((session) => session.cwd)])];
+		const cwds = [...new Set([...folders, ...rootSessions().map((session) => session.cwd)])];
 		return cwds.map((cwd) => {
 			const item = new vscode.TreeItem(path.basename(cwd), vscode.TreeItemCollapsibleState.Expanded) as WorkspaceItem;
 			item.id = `workspace:${cwd}`;
@@ -363,7 +398,9 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 
 	private sessionItem(session: Session): vscode.TreeItem {
 		const status = sessionStatus(session);
-		const item = new vscode.TreeItem(session.title, vscode.TreeItemCollapsibleState.None);
+		const nested = children(session.id).length > 0;
+		const item = new vscode.TreeItem(session.title, nested ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None) as SessionItem;
+		item.sessionId = session.id;
 		item.id = `session:${session.id}`;
 		item.description = status.description;
 		item.iconPath = new vscode.ThemeIcon(status.icon);
@@ -451,10 +488,71 @@ async function defaultFolder(): Promise<string | undefined> {
 	return pickFolder();
 }
 
+function children(parentId: number): Session[] {
+	return [...sessions.values()].filter((session) => session.parentId === parentId);
+}
+
+function rootSessions(): Session[] {
+	return [...sessions.values()].filter((session) => session.parentId === undefined || !sessions.has(session.parentId));
+}
+
+function surface(id: string): Session | undefined {
+	return sessions.get(Number(id));
+}
+
+function readScreen(session: Session, lines: number): Promise<string> {
+	const id = nextReadId++;
+	return new Promise((resolve) => {
+		const finish = (text: string) => {
+			clearTimeout(timer);
+			pendingReads.delete(id);
+			resolve(text);
+		};
+		const timer = setTimeout(() => finish(""), 3_000);
+		pendingReads.set(id, finish);
+		post(session, { type: "read", id, lines });
+	});
+}
+
+function serveSurfaces(): vscode.Disposable {
+	surfaceServer = startSurfaceServer({
+		create: ({ name, parent, cwd }) => {
+			const parentSession = parent ? surface(parent) : undefined;
+			const dir = cwd && fs.existsSync(cwd) ? cwd : (parentSession?.cwd ?? os.homedir());
+			return String(createSession(dir, { kind: "shell", parent: parentSession, title: name }).id);
+		},
+		send: ({ surface: id, text }) => {
+			const session = surface(id);
+			if (!session || session.exited) return false;
+			if (session.proc) session.proc.write(text);
+			else session.pendingInput += text;
+			return true;
+		},
+		read: async ({ surface: id, lines }) => {
+			const session = surface(id);
+			return session ? readScreen(session, lines) : undefined;
+		},
+		close: ({ surface: id }) => {
+			const session = surface(id);
+			session?.panel.dispose();
+			return Boolean(session);
+		},
+		rename: ({ surface: id, title }) => {
+			const session = surface(id);
+			if (!session) return false;
+			session.title = session.defaultTitle = title;
+			render(session);
+			return true;
+		},
+	});
+	return surfaceServer;
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	extensionUri = context.extensionUri;
 	tree = new SessionTree();
 	context.subscriptions.push(
+		serveSurfaces(),
 		vscode.window.registerTreeDataProvider("piXterm.sessions", tree),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
 		vscode.window.onDidChangeWindowState(() => {

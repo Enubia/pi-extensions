@@ -20,4 +20,6 @@ What to check:
 
 Sessions: closed tabs stay in the sidebar as history (newest 15 per workspace, plus "N more…"). The search icon searches every Pi session; picking one reopens it with `pi --session`. A small bridge extension (`pi/vscode-bridge.ts`, loaded with `-e` only in these tabs) tells each tab its current session file, so `/new` and `/resume` are tracked.
 
+Subagents: each tab exposes a unix socket (`PI_VSCODE_SOCKET`) that the `vscode` backend of pi-interactive-subagents (branch `feat/vscode-backend` in the fork) uses to open subagent tabs in the editor group beside the parent; they nest under the parent in the sidebar. Subagent session files are hidden from history and search. WezTerm/tmux/zellij/cmux env vars are stripped so subagents never escape into another terminal.
+
 Known gap: subagents need a multiplexer (cmux/tmux/zellij/wezterm), so the subagent tool won't work here.

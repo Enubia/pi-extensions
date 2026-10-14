@@ -131,10 +131,11 @@ async function indexFile(file: string): Promise<SessionInfo | undefined> {
 }
 
 const CONCURRENCY = 32;
+const SUBAGENT_FILE = /_[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+\.jsonl$/;
 
 async function indexDirectory(dir: string): Promise<SessionInfo[]> {
 	const names = await fs.readdir(dir).catch(() => [] as string[]);
-	const files = names.filter((name) => name.endsWith(".jsonl")).map((name) => path.join(dir, name));
+	const files = names.filter((name) => name.endsWith(".jsonl") && !SUBAGENT_FILE.test(name)).map((name) => path.join(dir, name));
 	const results: SessionInfo[] = [];
 	for (let index = 0; index < files.length; index += CONCURRENCY) {
 		const infos = await Promise.all(files.slice(index, index + CONCURRENCY).map(indexFile));

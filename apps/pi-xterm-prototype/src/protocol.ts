@@ -16,9 +16,13 @@ export type FromWebview =
 	| { type: "clipboard"; text: string }
 	| { type: "userVar"; name: string; value: string }
 	| { type: "openUrl"; url: string }
-	| { type: "openFile"; path: string; line?: number; column?: number };
+	| { type: "openFile"; path: string; line?: number; column?: number }
+	| { type: "pasteRequest" }
+	| { type: "screen"; id: number; text: string };
 
 export type ToWebview =
 	| { type: "output"; data: string }
 	| { type: "exit"; code: number }
-	| { type: "focus" };
+	| { type: "focus" }
+	| { type: "paste"; text: string }
+	| { type: "read"; id: number; lines: number };
