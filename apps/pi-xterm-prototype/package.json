@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "start": "npm run build && code --new-window --extensionDevelopmentPath=\"$PWD\" ../..",
     "package": "npm run build && vsce package --no-dependencies --skip-license --allow-missing-repository -o pi-xterm.vsix",
-    "install-extension": "npm run package && code --install-extension pi-xterm.vsix --force"
+    "install-extension": "npm run package && code --install-extension pi-xterm.vsix --force --profile \"${VSCODE_PROFILE:-work}\""
   },
   "contributes": {
     "viewsContainers": {

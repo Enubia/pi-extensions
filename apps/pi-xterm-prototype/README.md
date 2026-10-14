@@ -26,4 +26,4 @@ Known gap: subagents need a multiplexer (cmux/tmux/zellij/wezterm), so the subag
 
 ## Install
 
-`npm run install-extension` builds `pi-xterm.vsix` and installs it into VS Code (`code --install-extension --force`). Re-run after changes, then reload the window. Uninstall: `code --uninstall-extension enubia.pi-xterm-prototype`.
+`npm run install-extension` builds `pi-xterm.vsix` and installs it into the `work` VS Code profile (override with `VSCODE_PROFILE=<name>`). Re-run after changes, then reload the window. Uninstall: `code --uninstall-extension enubia.pi-xterm-prototype --profile work`.
