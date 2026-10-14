@@ -1,0 +1,137 @@
+{
+  "name": "pi-xterm-prototype",
+  "displayName": "Pi (xterm prototype)",
+  "description": "PROTOTYPE: Pi TUI in VS Code editor tabs via node-pty + xterm.js webview.",
+  "publisher": "enubia",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:piXterm.sessions"
+  ],
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js && esbuild src/webview.ts --bundle --format=iife --target=chrome120 --sourcemap --outfile=dist/webview.js",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && code --new-window --extensionDevelopmentPath=\"$PWD\" ../.."
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "piXterm",
+          "title": "Pi",
+          "icon": "media/pi.svg"
+        }
+      ]
+    },
+    "views": {
+      "piXterm": [
+        {
+          "id": "piXterm.sessions",
+          "name": "Sessions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "piXterm.newSession",
+        "title": "Pi: New Session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "piXterm.newSessionInFolder",
+        "title": "Pi: New Session in Folder…",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "piXterm.newSessionHere",
+        "title": "New Pi Session Here",
+        "icon": "$(add)"
+      },
+      {
+        "command": "piXterm.reveal",
+        "title": "Show Pi Session"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "piXterm.newSession",
+          "when": "view == piXterm.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "piXterm.newSessionInFolder",
+          "when": "view == piXterm.sessions",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "piXterm.newSessionHere",
+          "when": "view == piXterm.sessions && viewItem == workspace",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "piXterm.newSessionHere",
+          "when": "false"
+        },
+        {
+          "command": "piXterm.reveal",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Pi (xterm prototype)",
+      "properties": {
+        "piXterm.command": {
+          "type": "string",
+          "default": "pi",
+          "description": "Command run through your login shell."
+        },
+        "piXterm.macOptionIsMeta": {
+          "type": "boolean",
+          "default": false
+        },
+        "piXterm.fontFamily": {
+          "type": "string",
+          "default": "",
+          "description": "Falls back to terminal.integrated.fontFamily, then editor.fontFamily."
+        },
+        "piXterm.fontSize": {
+          "type": "number",
+          "default": 0
+        },
+        "piXterm.renderer": {
+          "type": "string",
+          "enum": [
+            "webgl",
+            "dom"
+          ],
+          "default": "webgl"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.12.0-beta.301",
+    "@xterm/addon-unicode11": "0.10.0-beta.301",
+    "@xterm/addon-web-links": "0.13.0-beta.301",
+    "@xterm/addon-webgl": "0.20.0-beta.300",
+    "@xterm/xterm": "6.1.0-beta.304"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/vscode": "^1.100.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
