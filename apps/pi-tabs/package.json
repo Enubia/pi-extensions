@@ -2,7 +2,28 @@
   "name": "pi-tabs",
   "displayName": "Pi Tabs",
   "description": "Run the Pi coding agent TUI in VS Code editor tabs, with a sessions sidebar, searchable history and subagent tabs.",
-  "publisher": "enubia",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1b1c2a",
+    "theme": "dark"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "pi",
+    "ai",
+    "agent",
+    "coding agent",
+    "terminal",
+    "tui",
+    "xterm"
+  ],
+  "homepage": "https://github.com/Enubia/pi-extensions/blob/main/apps/pi-tabs",
+  "bugs": {
+    "url": "https://github.com/Enubia/pi-extensions/issues"
+  },
+  "publisher": "Enubia",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
@@ -18,8 +39,9 @@
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js && esbuild src/webview.ts --bundle --format=iife --target=chrome120 --sourcemap --outfile=dist/webview.js",
     "typecheck": "tsc --noEmit",
     "start": "npm run build && code --new-window --extensionDevelopmentPath=\"$PWD\" ../..",
-    "package": "npm run build && vsce package --no-dependencies --skip-license --allow-missing-repository -o pi-tabs.vsix",
-    "install-extension": "npm run package && code --install-extension pi-tabs.vsix --force --profile \"${VSCODE_PROFILE:-work}\""
+    "package": "npm run build && vsce package --no-dependencies --baseContentUrl https://github.com/Enubia/pi-extensions/blob/main/apps/pi-tabs --baseImagesUrl https://github.com/Enubia/pi-extensions/raw/main/apps/pi-tabs -o pi-tabs.vsix",
+    "install-extension": "npm run package && code --install-extension pi-tabs.vsix --force ${VSCODE_PROFILE:+--profile \"$VSCODE_PROFILE\"}",
+    "publish": "npm run build && vsce publish --no-dependencies --baseContentUrl https://github.com/Enubia/pi-extensions/blob/main/apps/pi-tabs --baseImagesUrl https://github.com/Enubia/pi-extensions/raw/main/apps/pi-tabs"
   },
   "contributes": {
     "viewsContainers": {
@@ -169,7 +191,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Enubia/pi-extensions"
-  },
-  "icon": "media/icon.png"
+    "url": "https://github.com/Enubia/pi-extensions.git",
+    "directory": "apps/pi-tabs"
+  }
 }
