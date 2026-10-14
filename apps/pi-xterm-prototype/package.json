@@ -56,10 +56,29 @@
       {
         "command": "piXterm.reveal",
         "title": "Show Pi Session"
+      },
+      {
+        "command": "piXterm.search",
+        "title": "Pi: Search Sessions",
+        "icon": "$(search)"
+      },
+      {
+        "command": "piXterm.searchHere",
+        "title": "Search Sessions Here",
+        "icon": "$(search)"
+      },
+      {
+        "command": "piXterm.openSessionFile",
+        "title": "Open Pi Session"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "piXterm.search",
+          "when": "view == piXterm.sessions",
+          "group": "navigation@0"
+        },
         {
           "command": "piXterm.newSession",
           "when": "view == piXterm.sessions",
@@ -76,6 +95,11 @@
           "command": "piXterm.newSessionHere",
           "when": "view == piXterm.sessions && viewItem == workspace",
           "group": "inline"
+        },
+        {
+          "command": "piXterm.searchHere",
+          "when": "view == piXterm.sessions && viewItem == workspace",
+          "group": "inline"
         }
       ],
       "commandPalette": [
@@ -85,6 +109,14 @@
         },
         {
           "command": "piXterm.reveal",
+          "when": "false"
+        },
+        {
+          "command": "piXterm.searchHere",
+          "when": "false"
+        },
+        {
+          "command": "piXterm.openSessionFile",
           "when": "false"
         }
       ]

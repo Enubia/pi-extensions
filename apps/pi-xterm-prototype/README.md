@@ -18,4 +18,6 @@ What to check:
 - Attention: the `❓`/`✓` markers on tabs and in the sidebar, plus notifications when the tab is not focused
 - Links: URLs and `path/to/file.ts:12` open in VS Code
 
+Sessions: closed tabs stay in the sidebar as history (newest 15 per workspace, plus "N more…"). The search icon searches every Pi session; picking one reopens it with `pi --session`. A small bridge extension (`pi/vscode-bridge.ts`, loaded with `-e` only in these tabs) tells each tab its current session file, so `/new` and `/resume` are tracked.
+
 Known gap: subagents need a multiplexer (cmux/tmux/zellij/wezterm), so the subagent tool won't work here.

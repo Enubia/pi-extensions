@@ -95,7 +95,11 @@ term.parser.registerOscHandler(52, (data) => {
 	return true;
 });
 
-term.parser.registerOscHandler(1337, () => true);
+term.parser.registerOscHandler(1337, (data) => {
+	const match = /^SetUserVar=([^=]+)=(.*)$/.exec(data);
+	if (match) post({ type: "userVar", name: match[1], value: match[2] ? decodeBase64(match[2]) : "" });
+	return true;
+});
 
 term.onTitleChange((title) => post({ type: "title", title }));
 term.onData((data) => post({ type: "input", data }));

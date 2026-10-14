@@ -14,6 +14,7 @@ export type FromWebview =
 	| { type: "progress"; state: number }
 	| { type: "notify"; title?: string; body: string }
 	| { type: "clipboard"; text: string }
+	| { type: "userVar"; name: string; value: string }
 	| { type: "openUrl"; url: string }
 	| { type: "openFile"; path: string; line?: number; column?: number };
 

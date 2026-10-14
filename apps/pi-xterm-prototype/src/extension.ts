@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { FromWebview, ToWebview, WebviewSettings } from "./protocol";
+import { allSessions, relativeTime, type SessionInfo, sessionLabel, sessionsForCwd, sessionsRoot } from "./session-index";
 
 type Pty = {
 	pid: number;
@@ -34,9 +35,12 @@ type Session = {
 	attentionToken?: string;
 	exited: boolean;
 	proc?: Pty;
+	file?: string;
 };
 
 type WorkspaceItem = vscode.TreeItem & { cwd: string };
+
+const HISTORY_LIMIT = 15;
 
 const ATTENTION_DIR = process.env.PI_ATTENTION_DIR?.trim() || path.join(os.homedir(), ".pi", "agent", "attention");
 
@@ -109,7 +113,9 @@ function childEnv(session: Session): NodeJS.ProcessEnv {
 
 function spawn(session: Session, cols: number, rows: number) {
 	const shell = process.env.SHELL || "/bin/zsh";
-	const proc = loadPty().spawn(shell, ["-l", "-i", "-c", `exec ${session.command}`], {
+	const bridge = vscode.Uri.joinPath(extensionUri, "pi", "vscode-bridge.ts").fsPath;
+	const args = ["-e", bridge, ...(session.file ? ["--session", session.file] : [])];
+	const proc = loadPty().spawn(shell, ["-l", "-i", "-c", `exec ${session.command} "$@"`, "pi", ...args], {
 		name: "xterm-256color",
 		cols,
 		rows,
@@ -181,6 +187,11 @@ function handleMessage(session: Session, message: FromWebview) {
 		case "clipboard":
 			void vscode.env.clipboard.writeText(message.text);
 			return;
+		case "userVar":
+			if (message.name !== "pi_session_file") return;
+			session.file = message.value || undefined;
+			tree.refresh();
+			return;
 		case "openUrl":
 			void vscode.env.openExternal(vscode.Uri.parse(message.url));
 			return;
@@ -212,9 +223,15 @@ html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; background: 
 </html>`;
 }
 
-function createSession(cwd: string): Session {
+function openSessionFile(info: SessionInfo) {
+	const open = [...sessions.values()].find((session) => session.file === info.file && !session.exited);
+	if (open) return open.panel.reveal();
+	createSession(fs.existsSync(info.cwd) ? info.cwd : os.homedir(), info);
+}
+
+function createSession(cwd: string, resume?: SessionInfo): Session {
 	const id = nextId++;
-	const defaultTitle = `pi · ${path.basename(cwd)}`;
+	const defaultTitle = resume ? sessionLabel(resume) : `pi · ${path.basename(cwd)}`;
 	const panel = vscode.window.createWebviewPanel("piXterm", defaultTitle, vscode.ViewColumn.Active, {
 		enableScripts: true,
 		retainContextWhenHidden: true,
@@ -222,7 +239,7 @@ function createSession(cwd: string): Session {
 	});
 	panel.iconPath = vscode.Uri.joinPath(extensionUri, "media", "pi.svg");
 	const command = vscode.workspace.getConfiguration("piXterm").get<string>("command") || "pi";
-	const session: Session = { id, cwd, panel, command, defaultTitle, title: defaultTitle, busy: false, exited: false };
+	const session: Session = { id, cwd, panel, command, defaultTitle, title: defaultTitle, busy: false, exited: false, file: resume?.file };
 	sessions.set(id, session);
 	panel.webview.html = webviewHtml(panel.webview, webviewSettings());
 	panel.webview.onDidReceiveMessage((message: FromWebview) => handleMessage(session, message));
@@ -319,10 +336,15 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 		return element;
 	}
 
-	getChildren(element?: vscode.TreeItem): vscode.TreeItem[] {
+	async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
 		if (!element) return this.workspaces();
 		const cwd = (element as WorkspaceItem).cwd;
-		return [...sessions.values()].filter((session) => session.cwd === cwd).map((session) => this.sessionItem(session));
+		const open = [...sessions.values()].filter((session) => session.cwd === cwd);
+		const openFiles = new Set(open.map((session) => session.file));
+		const history = (await sessionsForCwd(cwd)).filter((info) => !openFiles.has(info.file));
+		const items = [...open.map((session) => this.sessionItem(session)), ...history.slice(0, HISTORY_LIMIT).map((info) => this.historyItem(info))];
+		if (history.length > HISTORY_LIMIT) items.push(this.moreItem(cwd, history.length - HISTORY_LIMIT));
+		return items;
 	}
 
 	private workspaces(): WorkspaceItem[] {
@@ -347,6 +369,70 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 		item.iconPath = new vscode.ThemeIcon(status.icon);
 		item.command = { command: "piXterm.reveal", title: "Show", arguments: [session.id] };
 		return item;
+	}
+
+	private historyItem(info: SessionInfo): vscode.TreeItem {
+		const item = new vscode.TreeItem(sessionLabel(info), vscode.TreeItemCollapsibleState.None);
+		item.id = `history:${info.file}`;
+		item.description = relativeTime(info.modifiedAt);
+		item.tooltip = new vscode.MarkdownString([`**${sessionLabel(info)}**`, info.name && info.firstMessage ? info.firstMessage : "", `\`${info.file}\``].filter(Boolean).join("\n\n"));
+		item.iconPath = new vscode.ThemeIcon("history");
+		item.contextValue = "history";
+		item.command = { command: "piXterm.openSessionFile", title: "Open", arguments: [info] };
+		return item;
+	}
+
+	private moreItem(cwd: string, remaining: number): vscode.TreeItem {
+		const item = new vscode.TreeItem(`${remaining} more\u2026`, vscode.TreeItemCollapsibleState.None);
+		item.id = `more:${cwd}`;
+		item.iconPath = new vscode.ThemeIcon("search");
+		item.command = { command: "piXterm.searchHere", title: "Search", arguments: [{ cwd }] };
+		return item;
+	}
+}
+
+type SessionPick = vscode.QuickPickItem & { info: SessionInfo };
+
+function toPick(info: SessionInfo): SessionPick {
+	const open = [...sessions.values()].some((session) => session.file === info.file && !session.exited);
+	return {
+		label: `${open ? "$(circle-filled) " : ""}${sessionLabel(info)}`,
+		description: `${info.cwd.replace(os.homedir(), "~")} \u00b7 ${relativeTime(info.modifiedAt)}`,
+		detail: info.name ? info.firstMessage : undefined,
+		info,
+	};
+}
+
+async function searchSessions(cwd?: string) {
+	const pick = vscode.window.createQuickPick<SessionPick>();
+	pick.placeholder = cwd ? `Search Pi sessions in ${path.basename(cwd)}` : "Search all Pi sessions";
+	pick.matchOnDescription = true;
+	pick.matchOnDetail = true;
+	pick.busy = true;
+	pick.onDidAccept(() => {
+		const info = pick.selectedItems[0]?.info;
+		pick.hide();
+		if (info) openSessionFile(info);
+	});
+	pick.onDidHide(() => pick.dispose());
+	pick.show();
+	const update = (infos: SessionInfo[]) => {
+		pick.items = infos.map(toPick);
+	};
+	update(cwd ? await sessionsForCwd(cwd) : await allSessions(update));
+	pick.busy = false;
+}
+
+function watchSessions(): vscode.Disposable {
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		const watcher = fs.watch(sessionsRoot(), { recursive: true }, () => {
+			clearTimeout(timer);
+			timer = setTimeout(() => tree.refresh(), 1_000);
+		});
+		return { dispose: () => watcher.close() };
+	} catch {
+		return { dispose: () => {} };
 	}
 }
 
@@ -390,7 +476,11 @@ export function activate(context: vscode.ExtensionContext) {
 			if (item?.cwd) createSession(item.cwd);
 		}),
 		vscode.commands.registerCommand("piXterm.reveal", (id: number) => sessions.get(id)?.panel.reveal()),
+		vscode.commands.registerCommand("piXterm.openSessionFile", (info: SessionInfo) => openSessionFile(info)),
+		vscode.commands.registerCommand("piXterm.search", () => searchSessions()),
+		vscode.commands.registerCommand("piXterm.searchHere", (item?: { cwd: string }) => searchSessions(item?.cwd)),
 		watchAttention(),
+		watchSessions(),
 	);
 }
 
