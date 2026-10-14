@@ -3,7 +3,7 @@
   "displayName": "Pi (xterm prototype)",
   "description": "PROTOTYPE: Pi TUI in VS Code editor tabs via node-pty + xterm.js webview.",
   "publisher": "enubia",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "license": "MIT",
   "type": "commonjs",
@@ -17,7 +17,9 @@
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js && esbuild src/webview.ts --bundle --format=iife --target=chrome120 --sourcemap --outfile=dist/webview.js",
     "typecheck": "tsc --noEmit",
-    "start": "npm run build && code --new-window --extensionDevelopmentPath=\"$PWD\" ../.."
+    "start": "npm run build && code --new-window --extensionDevelopmentPath=\"$PWD\" ../..",
+    "package": "npm run build && vsce package --no-dependencies --skip-license --allow-missing-repository -o pi-xterm.vsix",
+    "install-extension": "npm run package && code --install-extension pi-xterm.vsix --force"
   },
   "contributes": {
     "viewsContainers": {
@@ -153,17 +155,20 @@
       }
     }
   },
-  "dependencies": {
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^4.0.0",
     "@xterm/addon-fit": "0.12.0-beta.301",
     "@xterm/addon-unicode11": "0.10.0-beta.301",
     "@xterm/addon-web-links": "0.13.0-beta.301",
     "@xterm/addon-webgl": "0.20.0-beta.300",
-    "@xterm/xterm": "6.1.0-beta.304"
-  },
-  "devDependencies": {
-    "@types/node": "^22.20.5",
-    "@types/vscode": "^1.100.0",
+    "@xterm/xterm": "6.1.0-beta.304",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Enubia/pi-extensions"
   }
 }
