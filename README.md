@@ -8,7 +8,7 @@ My personal [Pi](https://github.com/earendil-works/pi) extensions. The defaults 
 | --- | --- |
 | `ask-user-question` | Tool that lets the agent ask the user structured questions |
 | `bash-guard` | Guards agent `bash` calls, stricter for subagents |
-| `attention-notify` | cmux notification when the agent asks a question; in WezTerm, beeps and sets attention state for the status bar when the agent asks or the main agent finishes. See [its README](extensions/attention-notify/README.md) |
+| `attention-notify` | cmux notification when the agent asks a question; in WezTerm, beeps and sets attention state for the status bar when the agent asks or the main agent finishes; in the VS Code extension's tabs, signals the tab instead. See [its README](extensions/attention-notify/README.md) |
 | `lsp` | Language-server diagnostics, hover, definitions, references, symbols |
 | `observational-memory` | Session-ledger memory with mid-run compaction |
 | `provider-failover` | Switches provider on quota or transient failures, switches back after cooldown |
@@ -24,6 +24,7 @@ Some extensions have their own README with configuration details.
 | App | What it does |
 | --- | --- |
 | [`attention-bar`](apps/attention-bar/README.md) | macOS menu bar item listing sessions that need input or have finished; click to jump to the WezTerm pane |
+| [`pi-xterm-prototype`](apps/pi-xterm-prototype/README.md) | VS Code extension that runs Pi in editor tabs (xterm.js), with a sidebar of sessions per workspace, searchable history, subagent tabs and attention notifications |
 
 ## Install
 
