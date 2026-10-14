@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - apps/pi-tabs/**
+      - .github/workflows/pi-tabs-release.yml
       - "!apps/pi-tabs/CHANGELOG.md"
   workflow_dispatch:
     inputs:
