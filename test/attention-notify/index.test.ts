@@ -204,3 +204,49 @@ test("mirrors attention state into the attention directory when it exists", asyn
 		}
 	}
 });
+
+test("signals VS Code Pi tabs through user vars without beeping or writing attention records", async () => {
+	const keys = ["CMUX_WORKSPACE_ID", "CMUX_TAB_ID", "CMUX_SOCKET_PATH", "TERM_PROGRAM", "PI_SUBAGENT_ID", "WEZTERM_PANE", "TMUX", "PI_ATTENTION_DIR", "PI_XTERM_SESSION"] as const;
+	const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+	for (const key of keys) delete process.env[key];
+	const directory = mkdtempSync(join(tmpdir(), "pi-attention-"));
+	process.env.PI_ATTENTION_DIR = directory;
+	process.env.TERM_PROGRAM = "vscode";
+	process.env.PI_XTERM_SESSION = "3";
+	const originalWrite = process.stdout.write;
+	const written: string[] = [];
+	process.stdout.write = ((chunk: string) => {
+		written.push(chunk);
+		return true;
+	}) as typeof process.stdout.write;
+	const userVars = () =>
+		written.join("").match(/\x1b\]1337;SetUserVar=[^=]+=[A-Za-z0-9+/=]*\x07/g)?.map((chunk) => {
+			const [, name, value] = /SetUserVar=([^=]+)=([A-Za-z0-9+/=]*)/.exec(chunk) ?? [];
+			return `${name}=${Buffer.from(value, "base64").toString().replace(/:\d+$/, "")}`;
+		}) ?? [];
+	try {
+		const ctx = { mode: "tui", cwd: "/work/dotfiles" };
+		const tui = createPi("release prep");
+		attentionNotifyExtension(tui.pi);
+		await tui.handlers.get("tool_execution_start")?.({ toolName: "ask_user_question", args: { question: "Ship it?" } }, ctx);
+		await tui.handlers.get("tool_execution_end")?.({ toolName: "ask_user_question" }, ctx);
+		await tui.handlers.get("agent_settled")?.({ type: "agent_settled" }, ctx);
+		assert.deepEqual(userVars(), [
+			"pi_attention_text=Ship it?",
+			"pi_attention=input",
+			"pi_attention_text=",
+			"pi_attention=",
+			"pi_attention_text=release prep",
+			"pi_attention=done",
+		]);
+		assert.deepEqual(tui.executions, []);
+		assert.deepEqual(readdirSync(directory), []);
+	} finally {
+		process.stdout.write = originalWrite;
+		rmSync(directory, { recursive: true, force: true });
+		for (const key of keys) {
+			if (previous[key] === undefined) delete process.env[key];
+			else process.env[key] = previous[key];
+		}
+	}
+});

@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ATTENTION_USER_VAR, type AttentionState, attentionDirectory, attentionFileName, attentionValue, isInputPromptTool, isSubagentEnvironment, notificationArguments, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "./core.ts";
+import { ATTENTION_TEXT_USER_VAR, ATTENTION_USER_VAR, type AttentionState, attentionDirectory, attentionFileName, attentionValue, isInputPromptTool, isSubagentEnvironment, notificationArguments, oscSetUserVar, promptLabel, questionText, resolveBackend, resolveCmuxCli, sessionLabel, soundCommand, weztermPane } from "./core.ts";
 import { writeAttentionRecord } from "./store.ts";
 
 type AttentionContext = { mode: string; cwd: string };
@@ -10,7 +10,7 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 		if (!isInputPromptTool(event.toolName) || ctx.mode !== "tui") return;
 		setAttention(ctx, "input", questionText(event.args));
 		const backend = resolveBackend(process.env);
-		if (!backend) return;
+		if (!backend || backend === "vscode") return;
 		if (backend === "cmux") {
 			const label = promptLabel(sessionLabel(pi.getSessionName(), ctx.cwd), event.args);
 			void pi.exec(resolveCmuxCli(process.env), notificationArguments(label), { timeout: 10_000 }).catch(() => {});
@@ -46,6 +46,12 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 		if (ctx.mode !== "tui") return;
 		const now = Date.now();
 		const token = attentionValue(state, now);
+		const label = sessionLabel(pi.getSessionName(), ctx.cwd);
+		const backend = resolveBackend(process.env);
+		if (backend === "vscode") {
+			process.stdout.write(oscSetUserVar(ATTENTION_TEXT_USER_VAR, state ? (question ?? label) : "") + oscSetUserVar(ATTENTION_USER_VAR, token));
+			return;
+		}
 		const pane = weztermPane(process.env);
 		writeAttentionRecord(
 			attentionDirectory(process.env, homedir()),
@@ -54,13 +60,13 @@ export default function attentionNotifyExtension(pi: ExtensionAPI) {
 				pid: process.pid,
 				state,
 				token,
-				label: sessionLabel(pi.getSessionName(), ctx.cwd),
+				label,
 				...(question ? { question } : {}),
 				cwd: ctx.cwd,
 				...(pane === undefined ? {} : { weztermPane: pane }),
 				updatedAt: now,
 			},
 		);
-		if (resolveBackend(process.env) === "wezterm") process.stdout.write(oscSetUserVar(ATTENTION_USER_VAR, token));
+		if (backend === "wezterm") process.stdout.write(oscSetUserVar(ATTENTION_USER_VAR, token));
 	}
 }

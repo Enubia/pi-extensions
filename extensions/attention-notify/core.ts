@@ -14,10 +14,14 @@ export function sessionLabel(sessionName: string | undefined, cwd: string): stri
 	return basename || "session";
 }
 
-export type NotificationBackend = "cmux" | "wezterm";
+export type NotificationBackend = "cmux" | "wezterm" | "vscode";
 
 export function isCmuxEnvironment(environment: Environment): boolean {
 	return Boolean(environment.CMUX_WORKSPACE_ID || environment.CMUX_TAB_ID || environment.CMUX_SOCKET_PATH);
+}
+
+export function isVscodeEnvironment(environment: Environment): boolean {
+	return Boolean(environment.PI_XTERM_SESSION);
 }
 
 export function isWezTermEnvironment(environment: Environment): boolean {
@@ -26,6 +30,7 @@ export function isWezTermEnvironment(environment: Environment): boolean {
 }
 
 export function resolveBackend(environment: Environment): NotificationBackend | undefined {
+	if (isVscodeEnvironment(environment)) return "vscode";
 	if (isCmuxEnvironment(environment)) return "cmux";
 	if (isWezTermEnvironment(environment)) return "wezterm";
 	return undefined;
@@ -47,6 +52,8 @@ export function soundCommand(platform: NodeJS.Platform): [string, string[]] | un
 }
 
 export const ATTENTION_USER_VAR = "pi_attention";
+
+export const ATTENTION_TEXT_USER_VAR = "pi_attention_text";
 
 export type AttentionState = "input" | "done";
 
