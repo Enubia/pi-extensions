@@ -19,5 +19,5 @@
     <path d="M100 112 v84"/>
     <path d="M146 112 v62 c0 14 7 22 22 22"/>
   </g>
-  <rect x="186" y="178" width="18" height="24" rx="3" fill="#7dd3fc" fill-opacity="0.85"/>
+  <rect x="186" y="196" width="30" height="10" rx="3" fill="#7dd3fc" fill-opacity="0.85"/>
 </svg>
