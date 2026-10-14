@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -22,8 +21,6 @@ type PtyModule = {
 
 type Attention = "input" | "done";
 
-type AttentionRecord = { pid: number; state: Attention; token: string; label: string; question?: string };
-
 type Session = {
 	id: number;
 	cwd: string;
@@ -33,7 +30,7 @@ type Session = {
 	title: string;
 	busy: boolean;
 	attention?: Attention;
-	attentionToken?: string;
+	attentionText?: string;
 	exited: boolean;
 	proc?: Pty;
 	file?: string;
@@ -50,10 +47,7 @@ type SessionItem = vscode.TreeItem & { sessionId: number };
 
 const HISTORY_LIMIT = 15;
 
-const ATTENTION_DIR = process.env.PI_ATTENTION_DIR?.trim() || path.join(os.homedir(), ".pi", "agent", "attention");
-
 const sessions = new Map<number, Session>();
-const attentionFiles = new Map<string, number>();
 let nextId = 1;
 let extensionUri: vscode.Uri;
 let tree: SessionTree;
@@ -209,9 +203,12 @@ function handleMessage(session: Session, message: FromWebview) {
 			void vscode.env.clipboard.writeText(message.text);
 			return;
 		case "userVar":
-			if (message.name !== "pi_session_file") return;
-			session.file = message.value || undefined;
-			tree.refresh();
+			if (message.name === "pi_attention_text") session.attentionText = message.value;
+			else if (message.name === "pi_attention") onAttention(session, message.value);
+			else if (message.name === "pi_session_file") {
+				session.file = message.value || undefined;
+				tree.refresh();
+			}
 			return;
 		case "openUrl":
 			void vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -305,60 +302,19 @@ function createSession(cwd: string, { resume, kind = "pi", parent, title }: Crea
 	return session;
 }
 
-function parentPid(pid: number): Promise<number | undefined> {
-	return new Promise((resolve) => {
-		execFile("ps", ["-o", "ppid=", "-p", String(pid)], (error, stdout) => resolve(error ? undefined : Number(stdout.trim()) || undefined));
-	});
-}
-
-async function sessionForPid(pid: number): Promise<Session | undefined> {
-	let current: number | undefined = pid;
-	for (let depth = 0; current && current > 1 && depth < 6; depth++) {
-		for (const session of sessions.values()) if (session.proc?.pid === current) return session;
-		current = await parentPid(current);
-	}
-	return undefined;
-}
-
-function readAttention(file: string): AttentionRecord | undefined {
-	try {
-		return JSON.parse(fs.readFileSync(path.join(ATTENTION_DIR, file), "utf8")) as AttentionRecord;
-	} catch {
-		return undefined;
-	}
-}
-
-async function onAttentionFile(file: string) {
-	const record = readAttention(file);
-	if (!record) {
-		const session = sessions.get(attentionFiles.get(file) ?? -1);
-		attentionFiles.delete(file);
-		if (session?.attention) {
-			session.attention = undefined;
-			render(session);
-		}
-		return;
-	}
-	const session = await sessionForPid(record.pid);
-	if (!session || session.attentionToken === record.token) return;
-	attentionFiles.set(file, session.id);
-	session.attentionToken = record.token;
-	if (record.state === "input") {
+function onAttention(session: Session, token: string) {
+	const state = token.split(":")[0];
+	const text = session.attentionText || session.title;
+	if (state === "input") {
 		session.attention = "input";
-		notify(session, `Pi needs input: ${record.question || record.label}`);
-	} else if (record.state === "done" && session.parentId === undefined && !isWatching(session)) {
+		notify(session, `Pi needs input: ${text}`);
+	} else if (state === "done" && session.parentId === undefined && !isWatching(session)) {
 		session.attention = "done";
-		notify(session, `Pi finished: ${record.label}`);
+		notify(session, `Pi finished: ${text}`);
+	} else {
+		session.attention = undefined;
 	}
 	render(session);
-}
-
-function watchAttention(): vscode.Disposable {
-	fs.mkdirSync(ATTENTION_DIR, { recursive: true });
-	const watcher = fs.watch(ATTENTION_DIR, (_event, file) => {
-		if (file?.endsWith(".json")) void onAttentionFile(file);
-	});
-	return { dispose: () => watcher.close() };
 }
 
 function sessionStatus(session: Session): { description: string; icon: string } {
@@ -588,7 +544,6 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand("piXterm.openSessionFile", (info: SessionInfo) => openSessionFile(info)),
 		vscode.commands.registerCommand("piXterm.search", () => searchSessions()),
 		vscode.commands.registerCommand("piXterm.searchHere", (item?: { cwd: string }) => searchSessions(item?.cwd)),
-		watchAttention(),
 		watchSessions(),
 	);
 }
