@@ -100,7 +100,7 @@
       {
         "command": "piTabs.newSession",
         "key": "ctrl+alt+n",
-        "mac": "cmd+alt+n"
+        "mac": "ctrl+cmd+n"
       }
     ],
     "menus": {

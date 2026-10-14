@@ -5,7 +5,7 @@ Run [Pi](https://github.com/earendil-works/pi) in VS Code editor tabs instead of
 ## Getting started
 
 1. Make sure `pi` runs in your login shell (or point `piTabs.command` at it).
-2. Open **Pi Tabs** in the activity bar, or press `Cmd+Alt+N` (`Ctrl+Alt+N`).
+2. Open **Pi Tabs** in the activity bar, or press `Ctrl+Cmd+N` (`Ctrl+Alt+N`).
 
 Built for macOS. Linux may work but is untested; Windows is not supported.
 
