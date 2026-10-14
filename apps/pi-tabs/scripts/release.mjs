@@ -22,7 +22,7 @@ const commits = log
 		return {
 			hash: hash.slice(0, 7),
 			type: match?.[1] ?? "other",
-			text: match?.[4] ?? subject,
+			text: (match?.[4] ?? subject).replace(/\s*\[skip ci\]/gi, ""),
 			breaking: Boolean(match?.[3]) || /BREAKING CHANGE/.test(body),
 		};
 	});
