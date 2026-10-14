@@ -41,7 +41,7 @@ async function dispatch(handlers: SurfaceHandlers, op: string, body: Record<stri
 }
 
 export function startSurfaceServer(handlers: SurfaceHandlers): SurfaceServer {
-	const socket = path.join(os.tmpdir(), `pi-xterm-${process.pid}.sock`);
+	const socket = path.join(os.tmpdir(), `pi-tabs-${process.pid}.sock`);
 	fs.rmSync(socket, { force: true });
 	const server = http.createServer((request, response) => {
 		let raw = "";

@@ -1,20 +1,20 @@
-# Pi in VS Code editor tabs
+# Pi Tabs
 
-A VS Code extension that runs the full Pi TUI in editor tabs instead of the integrated terminal: node-pty → webview → xterm.js (WebGL). Every Pi extension keeps working because it is still a real terminal.
+Pi Tabs is a VS Code extension that runs the full Pi TUI in editor tabs instead of the integrated terminal: node-pty → webview → xterm.js (WebGL). Every Pi extension keeps working because it is still a real terminal.
 
 ## Install
 
 ```sh
-cd apps/pi-xterm-prototype && npm install && npm run install-extension
+cd apps/pi-tabs && npm install && npm run install-extension
 ```
 
-This builds `pi-xterm.vsix` and installs it into the `work` VS Code profile (override with `VSCODE_PROFILE=<name>`). Re-run after changes, then reload the window. Uninstall: `code --uninstall-extension enubia.pi-xterm-prototype --profile work`.
+This builds `pi-tabs.vsix` and installs it into the `work` VS Code profile (override with `VSCODE_PROFILE=<name>`). Re-run after changes, then reload the window. Uninstall: `code --uninstall-extension enubia.pi-tabs --profile work`.
 
 For development, `npm start` opens an Extension Development Host.
 
 ## Usage
 
-Open the **Pi** activity bar view and click `+`, or run **Pi: New Session**. Settings live under `piXterm.*` (command, font, `macOptionIsMeta`, renderer `webgl` | `dom`).
+Open the **Pi Tabs** activity bar view and click `+`, or run **Pi: New Session**. Settings live under `piTabs.*` (command, font, `macOptionIsMeta`, renderer `webgl` | `dom`).
 
 - **Sessions**: each workspace lists its open tabs, then its 15 most recent past sessions, plus "N more…". The search icon searches every Pi session; picking one reveals its tab or reopens it with `pi --session`. A small bridge extension (`pi/vscode-bridge.ts`, loaded with `-e` only in these tabs) tells each tab its current session file, so `/new` and `/resume` are tracked.
 - **Subagents**: each tab gets a unix socket (`PI_VSCODE_SOCKET`). The `vscode` backend of [pi-interactive-subagents](https://github.com/Enubia/pi-interactive-subagents) uses it to open subagent tabs in the editor group beside the parent; they nest under the parent in the sidebar, and the group closes when its last subagent tab does. Subagent sessions are hidden from history and search. WezTerm/tmux/zellij/cmux env vars are stripped so subagents never escape into another terminal.

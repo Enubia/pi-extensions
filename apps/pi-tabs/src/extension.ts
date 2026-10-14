@@ -72,7 +72,7 @@ function loadPty(): PtyModule {
 }
 
 function webviewSettings(): WebviewSettings {
-	const own = vscode.workspace.getConfiguration("piXterm");
+	const own = vscode.workspace.getConfiguration("piTabs");
 	const terminal = vscode.workspace.getConfiguration("terminal.integrated");
 	const editor = vscode.workspace.getConfiguration("editor");
 	return {
@@ -268,13 +268,13 @@ function createSession(cwd: string, { resume, kind = "pi", parent, title }: Crea
 	const id = nextId++;
 	const defaultTitle = title ?? (resume ? sessionLabel(resume) : `pi · ${path.basename(cwd)}`);
 	const placement = parent ? { viewColumn: subagentColumn(parent), preserveFocus: true } : vscode.ViewColumn.Active;
-	const panel = vscode.window.createWebviewPanel("piXterm", defaultTitle, placement, {
+	const panel = vscode.window.createWebviewPanel("piTabs", defaultTitle, placement, {
 		enableScripts: true,
 		retainContextWhenHidden: true,
 		localResourceRoots: [extensionUri],
 	});
 	panel.iconPath = vscode.Uri.joinPath(extensionUri, "media", "pi.svg");
-	const command = vscode.workspace.getConfiguration("piXterm").get<string>("command") || "pi";
+	const command = vscode.workspace.getConfiguration("piTabs").get<string>("command") || "pi";
 	const session: Session = { id, cwd, panel, command, defaultTitle, title: defaultTitle, busy: false, exited: false, file: resume?.file, kind, parentId: parent?.id, pendingInput: "" };
 	sessions.set(id, session);
 	panel.webview.html = webviewHtml(panel.webview, webviewSettings());
@@ -371,7 +371,7 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 		item.id = `session:${session.id}`;
 		item.description = status.description;
 		item.iconPath = new vscode.ThemeIcon(status.icon);
-		item.command = { command: "piXterm.reveal", title: "Show", arguments: [session.id] };
+		item.command = { command: "piTabs.reveal", title: "Show", arguments: [session.id] };
 		return item;
 	}
 
@@ -382,7 +382,7 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 		item.tooltip = new vscode.MarkdownString([`**${sessionLabel(info)}**`, info.name && info.firstMessage ? info.firstMessage : "", `\`${info.file}\``].filter(Boolean).join("\n\n"));
 		item.iconPath = new vscode.ThemeIcon("history");
 		item.contextValue = "history";
-		item.command = { command: "piXterm.openSessionFile", title: "Open", arguments: [info] };
+		item.command = { command: "piTabs.openSessionFile", title: "Open", arguments: [info] };
 		return item;
 	}
 
@@ -390,7 +390,7 @@ class SessionTree implements vscode.TreeDataProvider<vscode.TreeItem> {
 		const item = new vscode.TreeItem(`${remaining} more\u2026`, vscode.TreeItemCollapsibleState.None);
 		item.id = `more:${cwd}`;
 		item.iconPath = new vscode.ThemeIcon("search");
-		item.command = { command: "piXterm.searchHere", title: "Search", arguments: [{ cwd }] };
+		item.command = { command: "piTabs.searchHere", title: "Search", arguments: [{ cwd }] };
 		return item;
 	}
 }
@@ -520,7 +520,7 @@ export function activate(context: vscode.ExtensionContext) {
 	tree = new SessionTree();
 	context.subscriptions.push(
 		serveSurfaces(),
-		vscode.window.registerTreeDataProvider("piXterm.sessions", tree),
+		vscode.window.registerTreeDataProvider("piTabs.sessions", tree),
 		vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refresh()),
 		vscode.window.onDidChangeWindowState(() => {
 			for (const session of sessions.values()) {
@@ -529,21 +529,21 @@ export function activate(context: vscode.ExtensionContext) {
 				render(session);
 			}
 		}),
-		vscode.commands.registerCommand("piXterm.newSession", async () => {
+		vscode.commands.registerCommand("piTabs.newSession", async () => {
 			const cwd = await defaultFolder();
 			if (cwd) createSession(cwd);
 		}),
-		vscode.commands.registerCommand("piXterm.newSessionInFolder", async () => {
+		vscode.commands.registerCommand("piTabs.newSessionInFolder", async () => {
 			const cwd = await pickFolder();
 			if (cwd) createSession(cwd);
 		}),
-		vscode.commands.registerCommand("piXterm.newSessionHere", (item?: WorkspaceItem) => {
+		vscode.commands.registerCommand("piTabs.newSessionHere", (item?: WorkspaceItem) => {
 			if (item?.cwd) createSession(item.cwd);
 		}),
-		vscode.commands.registerCommand("piXterm.reveal", (id: number) => sessions.get(id)?.panel.reveal()),
-		vscode.commands.registerCommand("piXterm.openSessionFile", (info: SessionInfo) => openSessionFile(info)),
-		vscode.commands.registerCommand("piXterm.search", () => searchSessions()),
-		vscode.commands.registerCommand("piXterm.searchHere", (item?: { cwd: string }) => searchSessions(item?.cwd)),
+		vscode.commands.registerCommand("piTabs.reveal", (id: number) => sessions.get(id)?.panel.reveal()),
+		vscode.commands.registerCommand("piTabs.openSessionFile", (info: SessionInfo) => openSessionFile(info)),
+		vscode.commands.registerCommand("piTabs.search", () => searchSessions()),
+		vscode.commands.registerCommand("piTabs.searchHere", (item?: { cwd: string }) => searchSessions(item?.cwd)),
 		watchSessions(),
 	);
 }

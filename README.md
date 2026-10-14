@@ -24,7 +24,7 @@ Some extensions have their own README with configuration details.
 | App | What it does |
 | --- | --- |
 | [`attention-bar`](apps/attention-bar/README.md) | macOS menu bar item listing sessions that need input or have finished; click to jump to the WezTerm pane |
-| [`pi-xterm-prototype`](apps/pi-xterm-prototype/README.md) | VS Code extension that runs Pi in editor tabs (xterm.js), with a sidebar of sessions per workspace, searchable history, subagent tabs and attention notifications |
+| [`pi-tabs`](apps/pi-tabs/README.md) | VS Code extension that runs Pi in editor tabs (xterm.js), with a sidebar of sessions per workspace, searchable history, subagent tabs and attention notifications |
 
 ## Install
 

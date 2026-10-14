@@ -1,7 +1,7 @@
 {
-  "name": "pi-xterm-prototype",
-  "displayName": "Pi (xterm prototype)",
-  "description": "PROTOTYPE: Pi TUI in VS Code editor tabs via node-pty + xterm.js webview.",
+  "name": "pi-tabs",
+  "displayName": "Pi Tabs",
+  "description": "Run the Pi coding agent TUI in VS Code editor tabs, with a sessions sidebar, searchable history and subagent tabs.",
   "publisher": "enubia",
   "version": "0.1.0",
   "private": true,
@@ -12,139 +12,139 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onView:piXterm.sessions"
+    "onView:piTabs.sessions"
   ],
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --sourcemap --outfile=dist/extension.js && esbuild src/webview.ts --bundle --format=iife --target=chrome120 --sourcemap --outfile=dist/webview.js",
     "typecheck": "tsc --noEmit",
     "start": "npm run build && code --new-window --extensionDevelopmentPath=\"$PWD\" ../..",
-    "package": "npm run build && vsce package --no-dependencies --skip-license --allow-missing-repository -o pi-xterm.vsix",
-    "install-extension": "npm run package && code --install-extension pi-xterm.vsix --force --profile \"${VSCODE_PROFILE:-work}\""
+    "package": "npm run build && vsce package --no-dependencies --skip-license --allow-missing-repository -o pi-tabs.vsix",
+    "install-extension": "npm run package && code --install-extension pi-tabs.vsix --force --profile \"${VSCODE_PROFILE:-work}\""
   },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "piXterm",
-          "title": "Pi",
+          "id": "piTabs",
+          "title": "Pi Tabs",
           "icon": "media/pi.svg"
         }
       ]
     },
     "views": {
-      "piXterm": [
+      "piTabs": [
         {
-          "id": "piXterm.sessions",
+          "id": "piTabs.sessions",
           "name": "Sessions"
         }
       ]
     },
     "commands": [
       {
-        "command": "piXterm.newSession",
+        "command": "piTabs.newSession",
         "title": "Pi: New Session",
         "icon": "$(add)"
       },
       {
-        "command": "piXterm.newSessionInFolder",
+        "command": "piTabs.newSessionInFolder",
         "title": "Pi: New Session in Folder…",
         "icon": "$(folder-opened)"
       },
       {
-        "command": "piXterm.newSessionHere",
+        "command": "piTabs.newSessionHere",
         "title": "New Pi Session Here",
         "icon": "$(add)"
       },
       {
-        "command": "piXterm.reveal",
+        "command": "piTabs.reveal",
         "title": "Show Pi Session"
       },
       {
-        "command": "piXterm.search",
+        "command": "piTabs.search",
         "title": "Pi: Search Sessions",
         "icon": "$(search)"
       },
       {
-        "command": "piXterm.searchHere",
+        "command": "piTabs.searchHere",
         "title": "Search Sessions Here",
         "icon": "$(search)"
       },
       {
-        "command": "piXterm.openSessionFile",
+        "command": "piTabs.openSessionFile",
         "title": "Open Pi Session"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "piXterm.search",
-          "when": "view == piXterm.sessions",
+          "command": "piTabs.search",
+          "when": "view == piTabs.sessions",
           "group": "navigation@0"
         },
         {
-          "command": "piXterm.newSession",
-          "when": "view == piXterm.sessions",
+          "command": "piTabs.newSession",
+          "when": "view == piTabs.sessions",
           "group": "navigation@1"
         },
         {
-          "command": "piXterm.newSessionInFolder",
-          "when": "view == piXterm.sessions",
+          "command": "piTabs.newSessionInFolder",
+          "when": "view == piTabs.sessions",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "piXterm.newSessionHere",
-          "when": "view == piXterm.sessions && viewItem == workspace",
+          "command": "piTabs.newSessionHere",
+          "when": "view == piTabs.sessions && viewItem == workspace",
           "group": "inline"
         },
         {
-          "command": "piXterm.searchHere",
-          "when": "view == piXterm.sessions && viewItem == workspace",
+          "command": "piTabs.searchHere",
+          "when": "view == piTabs.sessions && viewItem == workspace",
           "group": "inline"
         }
       ],
       "commandPalette": [
         {
-          "command": "piXterm.newSessionHere",
+          "command": "piTabs.newSessionHere",
           "when": "false"
         },
         {
-          "command": "piXterm.reveal",
+          "command": "piTabs.reveal",
           "when": "false"
         },
         {
-          "command": "piXterm.searchHere",
+          "command": "piTabs.searchHere",
           "when": "false"
         },
         {
-          "command": "piXterm.openSessionFile",
+          "command": "piTabs.openSessionFile",
           "when": "false"
         }
       ]
     },
     "configuration": {
-      "title": "Pi (xterm prototype)",
+      "title": "Pi Tabs",
       "properties": {
-        "piXterm.command": {
+        "piTabs.command": {
           "type": "string",
           "default": "pi",
           "description": "Command run through your login shell."
         },
-        "piXterm.macOptionIsMeta": {
+        "piTabs.macOptionIsMeta": {
           "type": "boolean",
           "default": false
         },
-        "piXterm.fontFamily": {
+        "piTabs.fontFamily": {
           "type": "string",
           "default": "",
           "description": "Falls back to terminal.integrated.fontFamily, then editor.fontFamily."
         },
-        "piXterm.fontSize": {
+        "piTabs.fontSize": {
           "type": "number",
           "default": 0
         },
-        "piXterm.renderer": {
+        "piTabs.renderer": {
           "type": "string",
           "enum": [
             "webgl",
@@ -170,5 +170,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Enubia/pi-extensions"
-  }
+  },
+  "icon": "media/icon.png"
 }
