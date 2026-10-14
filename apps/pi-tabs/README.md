@@ -14,6 +14,7 @@ Run the [Pi](https://github.com/earendil-works/pi) coding agent in VS Code edito
 - **Subagent tabs**: with [pi-interactive-subagents](https://github.com/Enubia/pi-interactive-subagents), subagents open as tabs in the editor group beside their parent and nest under it in the sidebar. The group closes when its last subagent tab does. Subagent sessions are hidden from history and search.
 - **Attention**: with [attention-notify](https://github.com/Enubia/pi-extensions/tree/main/extensions/attention-notify), tabs and the sidebar show `❓` when Pi needs input and `✓` when it finished, plus a VS Code notification if the tab is not focused. Tabs also show a spinner while Pi works.
 - **Paste**: Cmd+V reads the clipboard in the extension host, so dictation tools that send a synthetic Cmd+V work.
+- **Shortcuts**: Cmd+Alt+N (Ctrl+Alt+N) opens a new session. Inside a tab, F1 and Cmd shortcuts (except Cmd+A/C/V) go to VS Code, so the command palette, quick open and tab switching keep working.
 - **Links**: URLs and `path/to/file.ts:12` open in VS Code.
 
 ## Settings

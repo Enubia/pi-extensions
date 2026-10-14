@@ -104,7 +104,15 @@ term.parser.registerOscHandler(1337, (data) => {
 const isMac = navigator.platform.toLowerCase().includes("mac");
 let lastKeyPaste = 0;
 
+const TERMINAL_CMD_KEYS = new Set(["KeyA", "KeyC", "KeyV"]);
+
+function belongsToVsCode(event: KeyboardEvent): boolean {
+	if (event.key === "F1") return true;
+	return isMac && event.metaKey && !TERMINAL_CMD_KEYS.has(event.code);
+}
+
 term.attachCustomKeyEventHandler((event) => {
+	if (belongsToVsCode(event)) return false;
 	const pasteKey = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && event.shiftKey;
 	if (!pasteKey || event.altKey || (event.code !== "KeyV" && event.key.toLowerCase() !== "v")) return true;
 	if (event.type === "keydown") {

@@ -96,6 +96,13 @@
         "title": "Open Pi Session"
       }
     ],
+    "keybindings": [
+      {
+        "command": "piTabs.newSession",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n"
+      }
+    ],
     "menus": {
       "view/title": [
         {
