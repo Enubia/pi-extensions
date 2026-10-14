@@ -37,7 +37,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/pi-tabs/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            apps/pi-tabs/package-lock.json
+
+      - run: npm ci
+        working-directory: .
 
       - run: npm ci
 
