@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 (2026-10-14)
+
+### Fixes
+
+- use ctrl+cmd+n on macOS since option+n is a dead key ([69c7b5f](https://github.com/Enubia/pi-extensions/commit/69c7b5f))
+
 ## 0.2.1 (2026-10-14)
 
 ### Other
