@@ -24,7 +24,7 @@
     "url": "https://github.com/Enubia/pi-extensions/issues"
   },
   "publisher": "Enubia",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "type": "commonjs",

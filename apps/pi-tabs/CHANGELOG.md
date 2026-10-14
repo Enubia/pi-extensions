@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 (2026-10-14)
+
+### Features
+
+- new session shortcut and pass VS Code shortcuts through tabs ([9f5ea13](https://github.com/Enubia/pi-extensions/commit/9f5ea13))
+
+### Other
+
+- drop from changelog entries ([652c087](https://github.com/Enubia/pi-extensions/commit/652c087))
+
 ## 0.1.1 (2026-10-14)
 
 ### Fixes
