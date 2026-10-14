@@ -1,0 +1,73 @@
+name: Release Pi Tabs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/pi-tabs/**
+      - "!apps/pi-tabs/CHANGELOG.md"
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+concurrency:
+  group: pi-tabs-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/pi-tabs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/pi-tabs/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - id: release
+        run: node scripts/release.mjs
+        env:
+          RELEASE_BUMP: ${{ inputs.bump || 'auto' }}
+
+      - if: steps.release.outputs.released == 'true'
+        run: npm run package
+
+      - if: steps.release.outputs.released == 'true'
+        run: npx vsce publish --packagePath pi-tabs.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - if: steps.release.outputs.released == 'true'
+        name: Commit, tag and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json CHANGELOG.md
+          git commit -m "chore(pi-tabs): release v${{ steps.release.outputs.version }} [skip ci]"
+          git pull --rebase origin main
+          git tag "${{ steps.release.outputs.tag }}"
+          git push origin HEAD:main "${{ steps.release.outputs.tag }}"
+
+      - if: steps.release.outputs.released == 'true'
+        run: gh release create "${{ steps.release.outputs.tag }}" pi-tabs.vsix --title "Pi Tabs v${{ steps.release.outputs.version }}" --notes-file RELEASE_NOTES.md
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -38,5 +38,7 @@ cd apps/pi-tabs
 npm install
 npm start                   # Extension Development Host
 npm run install-extension   # build pi-tabs.vsix and install it (VSCODE_PROFILE=<name> for another profile)
-npm run publish             # publish to the Marketplace (needs `npx vsce login Enubia` once)
+npm run publish             # manual publish (needs `npx vsce login Enubia` once)
 ```
+
+Releases are automatic: every push to `main` that touches `apps/pi-tabs` runs `.github/workflows/pi-tabs-release.yml`. It bumps the version from the commit messages since the last `pi-tabs-v*` tag (`feat` → minor, `!`/`BREAKING CHANGE` → major, anything else → patch), updates `CHANGELOG.md`, publishes to the Marketplace, and tags and creates a GitHub release with the `.vsix`. Run it manually from the Actions tab to force a bump. Needs the `VSCE_PAT` repository secret.
