@@ -13,6 +13,7 @@
       "./extensions/lsp/index.ts",
       "./extensions/observational-memory/src/index.ts",
       "./extensions/provider-failover/index.ts",
+      "./extensions/remote/index.ts",
       "./extensions/session-namer/index.ts",
       "./extensions/statusline.ts",
       "./extensions/subagent-models/index.ts",
