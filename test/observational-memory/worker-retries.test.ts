@@ -158,6 +158,13 @@ describe("observer retries", () => {
 		expect(h.runtime.lastObserverError).not.toContain("attempts");
 	});
 
+	it("does not retry quota exhaustion that pi treats as non-retryable", async () => {
+		const h = setup({ record_observations: [{ kind: "error", message: "429 insufficient_quota" }, tool] });
+		await settle(h.run, 60_000);
+		expect(h.requests).toHaveLength(1);
+		expect(h.runtime.lastObserverError).toContain("insufficient_quota");
+	});
+
 	it("does not retry aborted streams", async () => {
 		const h = setup({ record_observations: [{ kind: "aborted", message: "timeout" }, tool] });
 		await settle(h.run, 60_000);

@@ -1,18 +1,20 @@
+import { isRetryableAssistantError, type AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { debugLog } from "../debug-log.js";
 import { WorkerStreamError } from "./stream-errors.js";
 
-export const RETRYABLE_ERROR_RE =
-	/overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?error|connection.?refused|connection.?lost|websocket.?closed|websocket.?error|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|http2 request did not get a response|timed? out|timeout|terminated|retry delay/i;
+export function isRetryableErrorMessage(errorMessage: string | undefined): boolean {
+	return isRetryableAssistantError({ stopReason: "error", errorMessage } as AssistantMessage);
+}
 
 export const RETRY_BASE_DELAY_MS = 2_000;
 export const RETRY_JITTER_RATIO = 0.2;
 
 export function isRetryableError(error: unknown): boolean {
 	if (error instanceof WorkerStreamError) {
-		return error.stopReason === "error" && RETRYABLE_ERROR_RE.test(error.errorMessage ?? "");
+		return error.stopReason === "error" && isRetryableErrorMessage(error.errorMessage);
 	}
 	if (!(error instanceof Error) || error.name === "AbortError") return false;
-	return RETRYABLE_ERROR_RE.test(error.message);
+	return isRetryableErrorMessage(error.message);
 }
 
 export function retryDelayMs(retryNumber: number, random: () => number = Math.random): number {

@@ -77,6 +77,24 @@ describe("isRetryableErrorTurn", () => {
 		expect(isRetryableErrorTurn({ message: { role: "assistant", stopReason: "error", errorMessage: "429 rate limit" } })).toBe(true);
 	});
 
+	it("recognises gateway and temporary-unavailability errors pi retries since 1.3.0", () => {
+		for (const errorMessage of ["Unable to forward upstream stream", "The service is temporarily unavailable"]) {
+			expect(isRetryableErrorTurn({ message: { role: "assistant", stopReason: "error", errorMessage } })).toBe(true);
+		}
+	});
+
+	it("follows pi's transient classification beyond common HTTP wording", () => {
+		for (const errorMessage of ["server_busy", "getaddrinfo ENOTFOUND api.example.com", "pending stream has been canceled"]) {
+			expect(isRetryableErrorTurn({ message: { role: "assistant", stopReason: "error", errorMessage } })).toBe(true);
+		}
+	});
+
+	it("ignores quota and billing exhaustion that pi does not retry", () => {
+		for (const errorMessage of ["429 insufficient_quota", "429 Monthly usage limit reached"]) {
+			expect(isRetryableErrorTurn({ message: { role: "assistant", stopReason: "error", errorMessage } })).toBe(false);
+		}
+	});
+
 	it("ignores ordinary turns and non-retryable errors", () => {
 		expect(isRetryableErrorTurn(terminalTurn())).toBe(false);
 		expect(isRetryableErrorTurn({ message: { role: "assistant", stopReason: "error", errorMessage: "invalid api key" } })).toBe(false);

@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { RETRYABLE_ERROR_RE } from "../agents/retry.js";
+import { isRetryableErrorMessage } from "../agents/retry.js";
 import { resolveCompactionPolicy } from "../config.js";
 import { debugLog, withDebugLogContext } from "../debug-log.js";
 import type { Runtime } from "../runtime.js";
@@ -40,8 +40,7 @@ export function isRetryableErrorTurn(event: TurnEndLike): boolean {
 	const message = event.message;
 	return message?.role === "assistant"
 		&& message.stopReason === "error"
-		&& typeof message.errorMessage === "string"
-		&& RETRYABLE_ERROR_RE.test(message.errorMessage);
+		&& isRetryableErrorMessage(message.errorMessage);
 }
 
 export function turnWillContinue(event: TurnEndLike): boolean {
