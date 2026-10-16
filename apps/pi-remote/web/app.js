@@ -1,4 +1,4 @@
-import { needsInputCount, shouldChime, titleFor } from "./alerts.js";
+import { shouldChime, titleFor } from "./alerts.js";
 import { appendDelta, applySnapshot, mergeOlder, upsertEntry } from "./entries.js";
 import { answersFor, composerFor, selectionIsValid } from "./input.js";
 import { renderMarkdown } from "./markdown.js";

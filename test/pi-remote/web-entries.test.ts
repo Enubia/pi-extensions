@@ -50,3 +50,18 @@ test("applySnapshot refreshes known ids, keeps live-only entries after, caps", (
 	assert.deepEqual(next.map((x: { id: string; text: string }) => [x.id, x.text]), [["a", "fresh"], ["b", "b"], ["z", "live"]]);
 	assert.deepEqual(applySnapshot([], [e("1"), e("2"), e("3")], 2).map((x: { id: string }) => x.id), ["2", "3"]);
 });
+
+test("applySnapshot on reconnect keeps chronological order past the snapshot window", () => {
+	const held = Array.from({ length: 60 }, (_, i) => e(String(i + 1), String(i + 1), i + 1));
+	const snapshot = held.slice(10).map((x) => ({ ...x, text: "fresh" }));
+	const next = applySnapshot(held, snapshot, 300);
+	assert.deepEqual(next.map((x: { id: string }) => x.id), held.map((x) => x.id));
+	assert.equal(next[9].text, "10");
+	assert.equal(next[10].text, "fresh");
+});
+
+test("applySnapshot keeps live entries newer than the snapshot after it", () => {
+	const held = [e("1", "1", 1), e("2", "2", 2), e("3", "3", 3), e("4", "live", 4)];
+	const next = applySnapshot(held, [e("2", "s", 2), e("3", "s", 3)], 300);
+	assert.deepEqual(next.map((x: { id: string }) => x.id), ["1", "2", "3", "4"]);
+});

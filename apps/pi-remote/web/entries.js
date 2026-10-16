@@ -17,6 +17,15 @@ export function mergeOlder(entries, older) {
 
 export function applySnapshot(entries, snapshot, cap) {
 	const ids = new Set(snapshot.map((entry) => entry.id));
-	const merged = [...snapshot, ...entries.filter((entry) => !ids.has(entry.id))];
+	const firstShared = entries.findIndex((entry) => ids.has(entry.id));
+	const firstTimestamp = snapshot[0]?.timestamp ?? Number.POSITIVE_INFINITY;
+	const before = [];
+	const after = [];
+	entries.forEach((entry, index) => {
+		if (ids.has(entry.id)) return;
+		const older = firstShared >= 0 ? index < firstShared : entry.timestamp < firstTimestamp;
+		(older ? before : after).push(entry);
+	});
+	const merged = [...before, ...snapshot, ...after];
 	return merged.length > cap ? merged.slice(merged.length - cap) : merged;
 }
