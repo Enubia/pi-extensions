@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isInputPromptTool, sessionLabel } from "../attention-notify/core.ts";
-import { assistantMessageId, assistantTextEntry, condenseEntries, createStateTracker, pageEntries, routeSend, toolEntry, userEntry, validateClientMessage } from "./core.ts";
+import { assistantMessageId, assistantTextEntry, condenseEntries, createStateTracker, pageEntries, record, routeSend, toolEntry, userEntry, validateClientMessage } from "./core.ts";
 import { type ClientMessage, type CondensedEntry, type ErrorCode, PROTOCOL_VERSION, type RemoteState, type ServerMessage } from "./protocol.ts";
 import { type RemoteClient, type SocketServer, startSocketServer } from "./server.ts";
 
@@ -12,14 +12,10 @@ function remoteDirectory(): string {
 	return process.env.PI_REMOTE_DIR?.trim() || join(homedir(), ".pi", "agent", "remote");
 }
 
-function record(value: unknown): Record<string, unknown> | undefined {
-	return value !== null && typeof value === "object" ? value as Record<string, unknown> : undefined;
-}
-
 export default function remoteExtension(pi: ExtensionAPI) {
 	const tracker = createStateTracker();
 	const durations = new Map<string, number>();
-	const toolCalls = new Map<string, { name: string; args: unknown; timestamp: number }>();
+	const toolCalls = new Map<string, { args: unknown; timestamp: number }>();
 	let server: SocketServer | undefined;
 	let current: ExtensionContext | undefined;
 	let publishedState: RemoteState = "idle";
@@ -116,6 +112,7 @@ export default function remoteExtension(pi: ExtensionAPI) {
 		server?.close();
 		server = undefined;
 		publishedState = "idle";
+		tracker.reset();
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -176,9 +173,9 @@ export default function remoteExtension(pi: ExtensionAPI) {
 
 	pi.on("tool_execution_start", async (event) => {
 		if (isInputPromptTool(event.toolName)) tracker.questionStart(event.toolCallId);
-		if (server) {
+		if (server && !event.parentToolCallId) {
 			const timestamp = Date.now();
-			toolCalls.set(event.toolCallId, { name: event.toolName, args: event.args, timestamp });
+			toolCalls.set(event.toolCallId, { args: event.args, timestamp });
 			emitEntry(toolEntry(event.toolCallId, event.toolName, event.args, "running", timestamp));
 		}
 		syncState();
@@ -193,7 +190,7 @@ export default function remoteExtension(pi: ExtensionAPI) {
 				durations.set(event.toolCallId, event.durationMs);
 				if (durations.size > MAX_TRACKED_DURATIONS) durations.delete(durations.keys().next().value as string);
 			}
-			emitEntry(toolEntry(event.toolCallId, event.toolName, started?.args, event.isError ? "error" : "ok", started?.timestamp ?? Date.now(), event.durationMs));
+			if (!event.parentToolCallId) emitEntry(toolEntry(event.toolCallId, event.toolName, started?.args, event.isError ? "error" : "ok", started?.timestamp ?? Date.now(), event.durationMs));
 		}
 		syncState();
 	});

@@ -5,7 +5,7 @@ const SUMMARY_ARG_KEYS = ["command", "pattern", "query", "url", "question", "pat
 
 type Message = { role?: string; timestamp?: number; content?: unknown; toolCallId?: string; isError?: boolean };
 
-function record(value: unknown): Record<string, unknown> | undefined {
+export function record(value: unknown): Record<string, unknown> | undefined {
 	return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
@@ -135,6 +135,11 @@ export function createStateTracker() {
 		},
 		questionEnd(id: string) {
 			questions.delete(id);
+		},
+		reset() {
+			busy = false;
+			dialogs = 0;
+			questions.clear();
 		},
 		state(): RemoteState {
 			if (questions.size > 0) return "input";

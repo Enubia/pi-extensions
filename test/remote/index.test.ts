@@ -298,3 +298,33 @@ test("session_start twice replaces the socket without leaking", async () => {
 		assert.equal(existsSync(socketPath(dir)), false);
 	});
 });
+
+test("nested tool calls with parentToolCallId are not streamed live", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		await harness.emit("session_start", { reason: "startup" });
+		const client = new Client(socketPath(dir));
+		await client.next((m) => m.type === "hello");
+		await harness.emit("tool_execution_start", { toolCallId: "n1", parentToolCallId: "p1", toolName: "bash", args: { command: "ls" } });
+		await harness.emit("tool_execution_end", { toolCallId: "n1", parentToolCallId: "p1", toolName: "bash", isError: false, durationMs: 5 });
+		await harness.emit("tool_execution_start", { toolCallId: "c2", toolName: "bash", args: { command: "pwd" } });
+		await client.next((m) => m.type === "entry" && (m.entry as { id: string }).id === "t:c2");
+		assert.equal(client.messages.some((m) => m.type === "entry" && (m.entry as { id: string }).id === "t:n1"), false);
+		client.close();
+		await harness.emit(STOP);
+	});
+});
+
+test("session switch clears stale question and dialog state", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		await harness.emit("session_start", { reason: "startup" });
+		await harness.emit("tool_execution_start", { toolCallId: "q1", toolName: "ask_user_question", args: {} });
+		await harness.emit("ui_prompt_start", { kind: "select" });
+		await harness.emit("session_start", { reason: "new" });
+		const client = new Client(socketPath(dir));
+		assert.equal((await client.next((m) => m.type === "hello")).state, "idle");
+		client.close();
+		await harness.emit(STOP);
+	});
+});
