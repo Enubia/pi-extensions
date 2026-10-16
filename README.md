@@ -6,12 +6,13 @@ My personal [Pi](https://github.com/earendil-works/pi) extensions. The defaults 
 
 | Extension | What it does |
 | --- | --- |
-| `ask-user-question` | Tool that lets the agent ask the user structured questions |
+| `ask-user-question` | Tool that lets the agent ask the user structured questions; also answerable from [`pi-remote`](apps/pi-remote/README.md) |
 | `bash-guard` | Guards agent `bash` calls, stricter for subagents |
 | `attention-notify` | cmux notification when the agent asks a question; in WezTerm, beeps and sets attention state for the status bar when the agent asks or the main agent finishes; in the VS Code extension's tabs, signals the tab instead. See [its README](extensions/attention-notify/README.md) |
 | `lsp` | Language-server diagnostics, hover, definitions, references, symbols |
 | `observational-memory` | Session-ledger memory with mid-run compaction |
 | `provider-failover` | Switches provider on quota or transient failures, switches back after cooldown |
+| `remote` | Exposes the session on a local socket for [`pi-remote`](apps/pi-remote/README.md). See [its README](extensions/remote/README.md) |
 | `session-namer` | Auto-names sessions with a small model |
 | `statusline` | Claude Code-style status line |
 | `subagent-models` | Remaps subagent models to the session's current provider |
@@ -24,6 +25,7 @@ Some extensions have their own README with configuration details.
 | App | What it does |
 | --- | --- |
 | [`attention-bar`](apps/attention-bar/README.md) | macOS menu bar item listing sessions that need input or have finished; click to jump to the WezTerm pane |
+| [`pi-remote`](apps/pi-remote/README.md) | CLI hub plus phone web page to watch, steer and answer questions in running sessions over the LAN |
 | [`pi-tabs`](apps/pi-tabs/README.md) | VS Code extension that runs Pi in editor tabs (xterm.js), with a sidebar of sessions per workspace, searchable history, subagent tabs and attention notifications |
 
 ## Install
