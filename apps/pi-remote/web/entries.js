@@ -6,7 +6,7 @@ export function upsertEntry(entries, entry, cap) {
 
 export function appendDelta(entries, id, delta) {
 	const index = entries.findIndex((entry) => entry.id === id);
-	if (index < 0) return entries;
+	if (index < 0) return [...entries, { id, kind: "assistant", text: delta, timestamp: Date.now() }];
 	return entries.map((entry, i) => (i === index ? { ...entry, text: `${entry.text ?? ""}${delta}` } : entry));
 }
 

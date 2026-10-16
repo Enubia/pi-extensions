@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { resolveRemoteAnswers } from "../../extensions/question-events.ts";
 import { answersFor, composerFor, selectionIsValid } from "../../apps/pi-remote/web/input.js";
 
 const q = (mode: string) => ({ toolCallId: "t", question: "?", mode, options: [{ label: "A", value: "a" }, { label: "B", value: "b" }] });
@@ -39,8 +40,8 @@ test("input state without a question is plain busy-like send", () => {
 });
 
 test("answers map options, other and text", () => {
-	assert.deepEqual(answersFor(q("single-select"), { indexes: [1] }), [{ type: "option", index: 1 }]);
-	assert.deepEqual(answersFor(q("multi-select"), { indexes: [0, 1], text: "extra" }), [{ type: "option", index: 0 }, { type: "option", index: 1 }, { type: "other", text: "extra" }]);
+	assert.deepEqual(answersFor(q("single-select"), { indexes: [1] }), [{ type: "option", index: 2 }]);
+	assert.deepEqual(answersFor(q("multi-select"), { indexes: [0, 1], text: "extra" }), [{ type: "option", index: 1 }, { type: "option", index: 2 }, { type: "other", text: "extra" }]);
 	assert.deepEqual(answersFor(q("single-select"), { text: "hm" }), [{ type: "other", text: "hm" }]);
 	assert.deepEqual(answersFor(q("text"), { text: "yo" }), [{ type: "text", text: "yo" }]);
 });
@@ -50,4 +51,15 @@ test("selection validity", () => {
 	assert.equal(selectionIsValid(q("multi-select"), { indexes: [0] }), true);
 	assert.equal(selectionIsValid(q("text"), { text: "  " }), false);
 	assert.equal(selectionIsValid(q("single-select"), { text: "x" }), true);
+});
+
+test("page answers resolve to the tapped option through resolveRemoteAnswers", () => {
+	const options = [{ label: "A", value: "a" }, { label: "B", value: "b" }, { label: "C", value: "c" }];
+	const opened = (mode: "single-select" | "multi-select") => ({ toolCallId: "t", question: "?", mode, options });
+	const single = resolveRemoteAnswers(opened("single-select"), answersFor(q("single-select"), { indexes: [1] }));
+	assert.deepEqual(single?.map((answer) => answer.value), ["b"]);
+	const first = resolveRemoteAnswers(opened("single-select"), answersFor(q("single-select"), { indexes: [0] }));
+	assert.deepEqual(first?.map((answer) => answer.value), ["a"]);
+	const multi = resolveRemoteAnswers(opened("multi-select"), answersFor(q("multi-select"), { indexes: [0, 2] }));
+	assert.deepEqual(multi?.map((answer) => answer.value), ["a", "c"]);
 });

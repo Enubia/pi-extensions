@@ -106,8 +106,8 @@ test("tracks state, label, question and nesting", async () => {
 	await hub.start();
 	await waitFor(() => hub.list().length === 2);
 	const child = hub.list().find((item) => item.pid === 2);
-	assert.equal(child?.parentPid, 1);
-	assert.equal(hub.list().find((item) => item.pid === 1)?.parentPid, undefined);
+	assert.equal(child?.parentSession, "parent-id");
+	assert.equal("parentPid" in (child ?? {}), false);
 
 	parent.send({ v: PROTOCOL_VERSION, type: "state", state: "input", lastActivity: 5000 });
 	parent.send({ v: PROTOCOL_VERSION, type: "label", label: "renamed" });
@@ -170,4 +170,17 @@ test("emits sessions events on change and stop closes sockets", async () => {
 	hub.stop();
 	assert.deepEqual(hub.list(), []);
 	await waitFor(() => fake.received.length === 0);
+});
+
+test("entries and deltas bump lastActivity with a throttled sessions broadcast", async () => {
+	const fake = await session(7, { hello: { lastActivity: 1000 } });
+	await hub.start();
+	await waitFor(() => hub.list().length === 1);
+	const before = events.filter((event) => event.type === "sessions").length;
+	const entry = { id: "e1", kind: "assistant" as const, text: "hi", timestamp: 1 };
+	fake.send({ v: PROTOCOL_VERSION, type: "entry", entry });
+	for (let i = 0; i < 5; i++) fake.send({ v: PROTOCOL_VERSION, type: "text_delta", id: "e1", delta: "x" });
+	await waitFor(() => events.filter((event) => event.type === "text_delta").length === 5);
+	assert.ok(hub.list()[0].lastActivity > 1000);
+	assert.equal(events.filter((event) => event.type === "sessions").length, before + 1);
 });

@@ -12,7 +12,7 @@ export function composerFor(session) {
 export function answersFor(question, selection) {
 	const text = (selection.text ?? "").trim();
 	if (question.mode === "text") return [{ type: "text", text }];
-	const answers = (selection.indexes ?? []).map((index) => ({ type: "option", index }));
+	const answers = (selection.indexes ?? []).map((index) => ({ type: "option", index: index + 1 }));
 	if (text) answers.push({ type: "other", text });
 	return answers;
 }

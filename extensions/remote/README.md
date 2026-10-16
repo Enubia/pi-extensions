@@ -8,7 +8,7 @@ Exposes a running Pi session to [`pi-remote`](../../apps/pi-remote/README.md) ov
 
 ## Protocol
 
-Newline-delimited JSON, version `1` (`v` on every message; an unknown version gets `error` with code `incompatible`). Types are in [`protocol.ts`](protocol.ts). Multiple clients may connect.
+Newline-delimited JSON, version `1` (`v` on every message; an unknown version gets `error` with code `incompatible`). Types are in [`protocol.ts`](protocol.ts). Multiple clients may connect. Lines are capped at `MAX_LINE_LENGTH` (4 MB) in both directions; entry text and tool args are truncated per entry, and snapshots drop their oldest entries (`hasMore: true`) to fit. Answer `option` indexes are 1-based.
 
 | Direction | Messages |
 | --- | --- |

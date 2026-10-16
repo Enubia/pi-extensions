@@ -1,10 +1,12 @@
 import { shouldChime, titleFor } from "./alerts.js";
+import { createGrace } from "./grace.js";
 import { appendDelta, applySnapshot, mergeOlder, upsertEntry } from "./entries.js";
 import { answersFor, composerFor, selectionIsValid } from "./input.js";
 import { renderMarkdown } from "./markdown.js";
 import { formatAge, orderSessions } from "./sessions.js";
 
 const ENTRY_CAP = 300;
+const END_GRACE_MS = 3000;
 const $ = (id) => document.getElementById(id);
 
 const hashToken = /[#&]t=([^&]+)/.exec(location.hash)?.[1];
@@ -121,11 +123,7 @@ function onSessions(sessions) {
 	const open = new Set(sessions.map((session) => session.question?.toolCallId).filter(Boolean));
 	for (const id of state.dismissed) if (!open.has(id)) state.dismissed.delete(id);
 	document.title = titleFor(sessions);
-	if (state.openPid !== null && !currentSession()) {
-		toast("Session ended");
-		closeSession();
-		return;
-	}
+	if (state.openPid !== null) endGrace.update(Boolean(currentSession()));
 	renderList();
 	renderSession();
 }
@@ -176,7 +174,17 @@ function openSession(pid) {
 	loadSnapshot();
 }
 
+const endGrace = createGrace(
+	END_GRACE_MS,
+	() => {
+		toast("Session ended");
+		closeSession();
+	},
+	() => loadSnapshot(),
+);
+
 function closeSession() {
+	endGrace.cancel();
 	state.openPid = null;
 	state.entries = [];
 	elements.clear();

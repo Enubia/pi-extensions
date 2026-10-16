@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { connect } from "node:net";
 import {
 	encodeMessage,
+	MAX_LINE_LENGTH,
 	parseLine,
 	PROTOCOL_VERSION,
 	type ClientMessage,
@@ -11,8 +12,6 @@ import {
 	type RemoteState,
 	type ServerMessage,
 } from "../../extensions/remote/protocol.ts";
-
-const MAX_LINE_LENGTH = 4_000_000;
 
 export type SessionQuestion = {
 	toolCallId: string;

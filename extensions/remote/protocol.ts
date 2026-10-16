@@ -81,6 +81,12 @@ export type ServerMessage = HelloMessage | StateMessage | LabelMessage | Snapsho
 
 export const DEFAULT_SNAPSHOT_LIMIT = 50;
 
+export const MAX_LINE_LENGTH = 4_000_000;
+
+export const MAX_ENTRY_TEXT_LENGTH = 100_000;
+
+export const MAX_ENTRY_ARGS_LENGTH = 20_000;
+
 export function encodeMessage(message: ServerMessage | ClientMessage): string {
 	return `${JSON.stringify(message)}\n`;
 }

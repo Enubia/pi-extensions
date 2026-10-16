@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isInputPromptTool, sessionLabel } from "../attention-notify/core.ts";
-import { assistantMessageId, assistantTextEntry, condenseEntries, createStateTracker, pageEntries, record, routeSend, toolEntry, userEntry, validateClientMessage } from "./core.ts";
+import { assistantMessageId, boundEntry, assistantTextEntry, condenseEntries, createStateTracker, pageEntries, record, routeSend, toolEntry, userEntry, validateClientMessage } from "./core.ts";
 import { QUESTION_ANSWER_EVENT, QUESTION_CLOSED_EVENT, QUESTION_OPENED_EVENT, type QuestionClosed, type QuestionOpened, resolveRemoteAnswers } from "../question-events.ts";
 import { type ClientMessage, type CondensedEntry, type ErrorCode, PROTOCOL_VERSION, type RemoteState, type ServerMessage } from "./protocol.ts";
 import { type RemoteClient, type SocketServer, startSocketServer } from "./server.ts";
@@ -155,7 +155,7 @@ export default function remoteExtension(pi: ExtensionAPI) {
 	function emitEntry(entry: CondensedEntry | undefined) {
 		if (!entry) return;
 		touch();
-		publish(v({ type: "entry", entry }));
+		publish(v({ type: "entry", entry: boundEntry(entry) }));
 	}
 
 	function stop() {

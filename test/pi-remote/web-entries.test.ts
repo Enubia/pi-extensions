@@ -26,10 +26,23 @@ test("upsert does not mutate input", () => {
 	assert.equal(list.length, 1);
 });
 
-test("delta appends to the entry text; unknown id ignored", () => {
+test("delta appends to the entry text; unknown id creates a provisional assistant entry", () => {
 	const list = [e("a", "hel")];
 	assert.equal(appendDelta(list, "a", "lo")[0].text, "hello");
-	assert.deepEqual(appendDelta(list, "zzz", "x"), list);
+	const created = appendDelta(list, "zzz", "x");
+	assert.equal(created.length, 2);
+	assert.deepEqual({ ...created[1], timestamp: 0 }, { id: "zzz", kind: "assistant", text: "x", timestamp: 0 });
+	assert.ok(Math.abs(created[1].timestamp - Date.now()) < 5000);
+	assert.equal(appendDelta(created, "zzz", "y")[1].text, "xy");
+});
+
+test("provisional entry stays last through a snapshot and is replaced by the final entry", () => {
+	const streaming = appendDelta([e("a", "a", 10)], "a:99", "hi");
+	const merged = applySnapshot(streaming, [e("a", "a", 10), e("b", "b", 20)], 300);
+	assert.deepEqual(merged.map((x: { id: string }) => x.id), ["a", "b", "a:99"]);
+	const final = upsertEntry(merged, e("a:99", "hi there", 99), 300);
+	assert.equal(final.at(-1)?.text, "hi there");
+	assert.equal(final.length, 3);
 });
 
 test("mergeOlder prepends deduped entries without the cap", () => {

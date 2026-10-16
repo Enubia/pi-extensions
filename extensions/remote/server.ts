@@ -1,9 +1,7 @@
 import { chmodSync, mkdirSync, unlinkSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
-import { encodeMessage, parseLine, type ServerMessage } from "./protocol.ts";
-
-const MAX_LINE_LENGTH = 1_000_000;
+import { encodeMessage, MAX_LINE_LENGTH, parseLine, type ServerMessage } from "./protocol.ts";
 
 export type RemoteClient = { send(message: ServerMessage): void };
 

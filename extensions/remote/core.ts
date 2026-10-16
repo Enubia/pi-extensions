@@ -1,5 +1,5 @@
 import type { RemoteAnswerInput } from "../question-events.ts";
-import { DEFAULT_SNAPSHOT_LIMIT, type CondensedEntry, type CondensedToolEntry, type ClientMessage, type ErrorCode, PROTOCOL_VERSION, type RemoteState, type SendMode, type ToolStatus } from "./protocol.ts";
+import { DEFAULT_SNAPSHOT_LIMIT, MAX_ENTRY_ARGS_LENGTH, MAX_ENTRY_TEXT_LENGTH, MAX_LINE_LENGTH, type CondensedEntry, type CondensedToolEntry, type ClientMessage, type ErrorCode, PROTOCOL_VERSION, type RemoteState, type SendMode, type ToolStatus } from "./protocol.ts";
 
 const MAX_SUMMARY_LENGTH = 80;
 const SUMMARY_ARG_KEYS = ["command", "pattern", "query", "url", "question", "path", "file_path", "description"];
@@ -98,6 +98,16 @@ export function condenseEntries(branch: readonly unknown[], durations: ReadonlyM
 	return entries;
 }
 
+export function boundEntry(entry: CondensedEntry): CondensedEntry {
+	if (entry.kind === "tool") {
+		const args = JSON.stringify(entry.args) ?? "";
+		return args.length > MAX_ENTRY_ARGS_LENGTH ? { ...entry, args: `${args.slice(0, MAX_ENTRY_ARGS_LENGTH)}…` } : entry;
+	}
+	return entry.text.length > MAX_ENTRY_TEXT_LENGTH ? { ...entry, text: `${entry.text.slice(0, MAX_ENTRY_TEXT_LENGTH)}…` } : entry;
+}
+
+const SNAPSHOT_ENVELOPE_LENGTH = 1000;
+
 export function pageEntries(entries: readonly CondensedEntry[], before: string | undefined, limit: number | undefined): { entries: CondensedEntry[]; hasMore: boolean } {
 	const size = limit !== undefined && Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_SNAPSHOT_LIMIT;
 	let end = entries.length;
@@ -106,7 +116,15 @@ export function pageEntries(entries: readonly CondensedEntry[], before: string |
 		if (end < 0) return { entries: [], hasMore: false };
 	}
 	const start = Math.max(0, end - size);
-	return { entries: entries.slice(start, end), hasMore: start > 0 };
+	const bounded = entries.slice(start, end).map(boundEntry);
+	let budget = MAX_LINE_LENGTH - SNAPSHOT_ENVELOPE_LENGTH;
+	let keep = 0;
+	for (let index = bounded.length - 1; index >= 0; index--) {
+		budget -= JSON.stringify(bounded[index]).length + 1;
+		if (budget < 0 && keep > 0) break;
+		keep++;
+	}
+	return { entries: bounded.slice(bounded.length - keep), hasMore: start > 0 || keep < bounded.length };
 }
 
 export function routeSend(idle: boolean, mode: SendMode): { deliverAs?: "steer" | "followUp" } {

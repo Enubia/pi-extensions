@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { condenseEntries, createStateTracker, pageEntries, routeSend, summarizeToolCall, validateClientMessage } from "../../extensions/remote/core.ts";
-import { PROTOCOL_VERSION } from "../../extensions/remote/protocol.ts";
+import { encodeMessage, MAX_LINE_LENGTH, PROTOCOL_VERSION } from "../../extensions/remote/protocol.ts";
 
 const branch = [
 	{ type: "message", id: "e1", parentId: null, timestamp: "2026-01-01T00:00:00Z", message: { role: "user", content: "fix the bug", timestamp: 1000 } },
@@ -108,4 +108,20 @@ test("validateClientMessage checks version, shape", () => {
 	assert.equal(validateClientMessage("str").ok, false);
 	assert.equal(validateClientMessage({ v: 1, type: "snapshot", id: "1", limit: "x" }).ok, false);
 	assert.equal(validateClientMessage({ v: 1, type: "snapshot", id: "1" }).ok, true);
+});
+
+test("pageEntries keeps an oversized snapshot_result within the line limit", () => {
+	const big = "x".repeat(900_000);
+	const entries = Array.from({ length: 100 }, (_, index) =>
+		index % 2
+			? { id: `t:${index}`, kind: "tool" as const, toolCallId: String(index), name: "bash", summary: "bash", args: { command: big }, status: "ok" as const, timestamp: index }
+			: { id: `a:${index}`, kind: "assistant" as const, text: big, timestamp: index },
+	);
+	const page = pageEntries(entries, undefined, 100);
+	const line = encodeMessage({ v: PROTOCOL_VERSION, type: "snapshot_result", id: "1", entries: page.entries, hasMore: page.hasMore });
+	assert.ok(line.length <= MAX_LINE_LENGTH, String(line.length));
+	assert.equal(page.entries.at(-1)?.id, "t:99");
+	assert.equal(page.hasMore, true);
+	const older = pageEntries(entries, page.entries[0].id, 100);
+	assert.equal(older.entries.at(-1)?.id, entries[entries.findIndex((entry) => entry.id === page.entries[0].id) - 1].id);
 });

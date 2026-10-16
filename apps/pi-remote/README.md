@@ -29,7 +29,7 @@ Only one hub runs per remote directory (`pi-remote.lock`). Remote directory: `~/
 ## What the page does
 
 - Lists sessions by urgency: needs input, busy, idle. Subagents nest under their parent.
-- Opens a session transcript with live updates, tool calls collapsed to one line (tap to expand), and "Load more" for history.
+- Opens a session transcript with live updates, tool calls collapsed to one line (tap to expand), and "Load more" for history. A session that vanishes (e.g. `/reload`) gets a 3s grace before the view closes as ended.
 - Sends a message (steers when busy, prompts when idle, or "Queue after run"), aborts a run, and answers `ask-user-question` questions. Answering in the TUI first clears the phone question.
 - Sessions waiting on a TUI dialog show a notice and no input box. Sessions on an older protocol show "incompatible, /reload".
 - Chimes and sets the tab title to `(N) needs input` when a session needs input or a main session finishes. Browsers only allow audio after a tap, so tap the page once after opening it. On iOS the ringer switch must be on.

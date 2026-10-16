@@ -11,8 +11,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const RESCAN_DEBOUNCE_MS = 25;
 const REFUSED_RETRY_MS = 150;
 const POLL_INTERVAL_MS = 500;
-
-export type SessionView = SessionInfo & { parentPid?: number };
+const ACTIVITY_BROADCAST_MS = 1000;
 
 export type HubEvent =
 	| { type: "sessions" }
@@ -22,7 +21,7 @@ export type HubEvent =
 export type Hub = {
 	start(): Promise<void>;
 	stop(): void;
-	list(): SessionView[];
+	list(): SessionInfo[];
 	subscribe(listener: (event: HubEvent) => void): () => void;
 	request(pid: number, payload: RequestPayload): Promise<ReplyMessage>;
 };
@@ -48,6 +47,18 @@ export function createHub(options: HubOptions): Hub {
 		}
 	};
 
+	const lastBroadcast = new Map<number, number>();
+
+	const touch = (pid: number) => {
+		const connection = connections.get(pid);
+		if (!connection) return;
+		const now = Date.now();
+		connection.info.lastActivity = now;
+		if (now - (lastBroadcast.get(pid) ?? 0) < ACTIVITY_BROADCAST_MS) return;
+		lastBroadcast.set(pid, now);
+		emit({ type: "sessions" });
+	};
+
 	const connectTo = (pid: number) => {
 		if (connections.has(pid) || stopped) return;
 		const path = join(options.dir, `${pid}.sock`);
@@ -61,14 +72,19 @@ export function createHub(options: HubOptions): Hub {
 				if (ready.has(pid)) emit({ type: "sessions" });
 			},
 			onEntry(entry) {
-				if (ready.has(pid)) emit({ type: "entry", pid, entry });
+				if (!ready.has(pid)) return;
+				touch(pid);
+				emit({ type: "entry", pid, entry });
 			},
 			onTextDelta(id, delta) {
-				if (ready.has(pid)) emit({ type: "text_delta", pid, id, delta });
+				if (!ready.has(pid)) return;
+				touch(pid);
+				emit({ type: "text_delta", pid, id, delta });
 			},
 			onClose(error) {
 				if (connections.get(pid) === connection) connections.delete(pid);
 				const wasReady = ready.delete(pid);
+				lastBroadcast.delete(pid);
 				if (error?.code === "ECONNREFUSED") {
 					if (!refusedOnce.has(pid)) {
 						refusedOnce.add(pid);
@@ -135,13 +151,7 @@ export function createHub(options: HubOptions): Hub {
 			listeners.clear();
 		},
 		list() {
-			const infos = [...connections.values()].filter((connection) => ready.has(connection.info.pid)).map((connection) => connection.info);
-			const bySessionId = new Map<string, number>();
-			for (const info of infos) if (info.sessionId) bySessionId.set(info.sessionId, info.pid);
-			return infos.map((info) => {
-				const parentPid = info.parentSession ? bySessionId.get(info.parentSession) : undefined;
-				return { ...info, ...(parentPid === undefined || parentPid === info.pid ? {} : { parentPid }) };
-			});
+			return [...connections.values()].filter((connection) => ready.has(connection.info.pid)).map((connection) => connection.info);
 		},
 		subscribe(listener) {
 			listeners.add(listener);
