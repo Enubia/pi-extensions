@@ -1,5 +1,46 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>pi-remote</title>
-<p>pi-remote placeholder</p>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="banner" hidden></div>
+<main id="list-view">
+<header class="bar"><h1>Sessions</h1><span id="conn" class="conn"></span></header>
+<ul id="sessions" class="sessions"></ul>
+<p id="empty" class="empty" hidden>No Pi sessions running.</p>
+</main>
+<main id="session-view" hidden>
+<header class="bar">
+<button id="back" class="icon" aria-label="Back">‹</button>
+<div class="titles"><h1 id="session-title"></h1><span id="session-state" class="badge"></span></div>
+<button id="abort" class="danger">Abort</button>
+</header>
+<div id="transcript" class="transcript">
+<button id="more" class="more" hidden>Load more</button>
+<div id="entries"></div>
+</div>
+<section id="question" class="question" hidden>
+<div id="question-text" class="question-text"></div>
+<div id="question-details" class="question-details"></div>
+<div id="question-options" class="question-options"></div>
+<button id="question-submit" class="primary" hidden>Submit selection</button>
+</section>
+<p id="notice" class="notice" hidden></p>
+<form id="composer" class="composer">
+<textarea id="text" rows="1" enterkeyhint="send" autocapitalize="sentences"></textarea>
+<div class="actions">
+<button id="queue" type="button" class="secondary">Queue after run</button>
+<button id="send" type="submit" class="primary">Send</button>
+</div>
+</form>
+</main>
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
