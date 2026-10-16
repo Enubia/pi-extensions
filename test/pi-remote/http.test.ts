@@ -242,3 +242,24 @@ test("close ends open event streams", async () => {
 	app.close();
 	await stream.done;
 });
+
+test("non-idle states audit auto send as steer", async () => {
+	await session(17, { hello: { label: "asker", state: "input" }, onRequest: (message, reply) => reply({ v: PROTOCOL_VERSION, type: "ack", id: message.id }) });
+	await post("/api/sessions/17/send", { text: "go", mode: "auto" });
+	assert.match(audit.join("\n"), /steer → asker/);
+});
+
+test("failed and timed-out actions are audited once with the error code", async () => {
+	await session(18, {
+		hello: { label: "flaky" },
+		onRequest: (message, reply) => {
+			if (message.type === "answer") reply({ v: PROTOCOL_VERSION, type: "error", id: message.id, code: "stale", message: "closed" });
+		},
+	});
+	await post("/api/sessions/18/answer", { toolCallId: "t", answers: [{ type: "text", text: "x" }] });
+	await post("/api/sessions/18/abort", {});
+	const lines = audit.filter((line) => line.includes("→"));
+	assert.equal(lines.length, 2);
+	assert.match(lines[0], /answer → flaky failed \(stale\)/);
+	assert.match(lines[1], /abort → flaky failed \(timeout\)/);
+});

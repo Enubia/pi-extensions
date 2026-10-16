@@ -4,16 +4,26 @@ import { parseCliArgs, realDeps, remoteDirectory, startPiRemote, type RunningHub
 async function main(): Promise<void> {
 	const options = parseCliArgs(process.argv.slice(2));
 	let running: RunningHub | undefined;
+	const controller = new AbortController();
 	let quitting = false;
 	const quit = async () => {
 		if (quitting) return;
 		quitting = true;
-		await running?.stop();
+		if (!running) {
+			controller.abort();
+			return;
+		}
+		await running.stop();
 		process.exit(0);
 	};
 	process.on("SIGINT", () => void quit());
 	process.on("SIGTERM", () => void quit());
-	running = await startPiRemote({ ...options, dir: remoteDirectory() }, realDeps(() => void quit()));
+	try {
+		running = await startPiRemote({ ...options, dir: remoteDirectory(), signal: controller.signal }, realDeps(() => void quit()));
+	} catch (error) {
+		if (controller.signal.aborted) process.exit(0);
+		throw error;
+	}
 }
 
 main().catch((error: unknown) => {

@@ -153,7 +153,7 @@ export function createHttpApp(options: HttpAppOptions): HttpApp {
 	const actionLabel = (pid: number, payload: RequestPayload): string => {
 		if (payload.type === "send") {
 			if (payload.mode === "followUp") return "followUp";
-			return hub.list().find((session) => session.pid === pid)?.state === "busy" ? "steer" : "prompt";
+			return hub.list().find((session) => session.pid === pid)?.state !== "idle" ? "steer" : "prompt";
 		}
 		return payload.type;
 	};
@@ -179,7 +179,10 @@ export function createHttpApp(options: HttpAppOptions): HttpApp {
 		try {
 			reply = await hub.request(pid, payload);
 		} catch (error) {
-			if (error instanceof RequestError) throw new HttpError(ERROR_STATUS[error.code] ?? 502, error.message, error.code);
+			if (error instanceof RequestError) {
+				if (payload.type !== "snapshot") audit(`${normalizeAddress(req.socket.remoteAddress)} ${kind} → ${label} failed (${error.code})`);
+				throw new HttpError(ERROR_STATUS[error.code] ?? 502, error.message, error.code);
+			}
 			throw error;
 		}
 		if (payload.type !== "snapshot") audit(`${normalizeAddress(req.socket.remoteAddress)} ${kind} → ${label}`);

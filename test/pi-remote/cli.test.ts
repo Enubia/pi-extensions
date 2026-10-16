@@ -123,3 +123,34 @@ test("discovers sessions in the configured dir", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("binds dual-stack so ipv6 loopback and ipv4 clients both connect", async () => {
+	const dir = tempDir();
+	try {
+		const running = await startPiRemote({ port: 0, forMs: undefined, dir }, deps([]));
+		try {
+			assert.equal((await fetch(`http://127.0.0.1:${running.port}/`)).status, 200);
+			assert.equal((await fetch(`http://[::1]:${running.port}/`)).status, 200);
+		} finally {
+			await running.stop();
+		}
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("abort during startup releases the lock and rejects", async () => {
+	const dir = tempDir();
+	try {
+		const controller = new AbortController();
+		const slow: StartDeps = { ...deps([]), renderQr: () => controller.abort() };
+		await assert.rejects(startPiRemote({ port: 0, forMs: undefined, dir, signal: controller.signal }, slow), /interrupted/);
+		assert.equal(existsSync(join(dir, LOCK_FILE_NAME)), false);
+		const already = new AbortController();
+		already.abort();
+		await assert.rejects(startPiRemote({ port: 0, forMs: undefined, dir, signal: already.signal }, deps([])), /interrupted/);
+		assert.equal(existsSync(join(dir, LOCK_FILE_NAME)), false);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

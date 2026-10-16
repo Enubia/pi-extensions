@@ -13,7 +13,7 @@ export const DEFAULT_PORT = 7317;
 
 export type CliOptions = { port: number; forMs: number | undefined };
 
-export type StartOptions = CliOptions & { dir: string };
+export type StartOptions = CliOptions & { dir: string; signal?: AbortSignal };
 
 export type StartDeps = {
 	print(line: string): void;
@@ -90,15 +90,29 @@ export async function startPiRemote(options: StartOptions, deps: StartDeps): Pro
 			void stop();
 			reject(error);
 		};
-		app.server.once("error", (error: NodeJS.ErrnoException) => {
+		const interrupted = () => fail(new Error("interrupted"));
+		if (options.signal?.aborted) {
+			interrupted();
+			return;
+		}
+		options.signal?.addEventListener("abort", interrupted, { once: true });
+		const onError = (error: NodeJS.ErrnoException) => {
+			if (bindHost === "::" && (error.code === "EAFNOSUPPORT" || error.code === "EADDRNOTAVAIL")) {
+				bindHost = "0.0.0.0";
+				app.server.listen(options.port, bindHost, onListening);
+				return;
+			}
 			fail(error.code === "EADDRINUSE" ? new Error(`port ${options.port} is already in use (use --port)`) : error);
-		});
-		app.server.listen(options.port, "0.0.0.0", () => {
+		};
+		let bindHost = "::";
+		app.server.on("error", onError);
+		const onListening = () => {
 			void (async () => {
 				try {
 					const address = app.server.address();
 					const port = typeof address === "object" && address ? address.port : options.port;
 					await hub.start();
+					if (stopped) return;
 					caffeinate = deps.spawnCaffeinate(process.pid);
 					if (options.forMs !== undefined) timer = setTimeout(() => deps.onExpire?.(), options.forMs);
 					const lan = deps.lanAddress() ?? "127.0.0.1";
@@ -109,13 +123,16 @@ export async function startPiRemote(options: StartOptions, deps: StartDeps): Pro
 						deps.print(lanUrl);
 						if (host) deps.print(`http://${host}.local:${port}/#t=${token}`);
 						deps.print("Ctrl+C to stop");
+						if (stopped) return;
+						options.signal?.removeEventListener("abort", interrupted);
 						resolve({ port, token, stop });
 					});
 				} catch (error) {
 					fail(error instanceof Error ? error : new Error(String(error)));
 				}
 			})();
-		});
+		};
+		app.server.listen(options.port, bindHost, onListening);
 	});
 }
 
