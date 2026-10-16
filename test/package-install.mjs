@@ -29,7 +29,7 @@ try {
 	});
 	assert.equal(installed.status, 0, installed.stderr);
 	const modules = readdirSync(join(packageDir, "node_modules")).filter(name => !name.startsWith("."));
-	assert.deepEqual(modules.sort(), ["graceful-fs", "proper-lockfile", "shell-quote", "signal-exit"]);
+	assert.deepEqual(modules.sort(), ["graceful-fs", "proper-lockfile", "qrcode-terminal", "shell-quote", "signal-exit"]);
 	for (const name of ["@earendil-works", "typebox"]) assert.equal(existsSync(join(packageDir, "node_modules", name)), false);
 	const require = createRequire(pathToFileURL(join(packageDir, "extensions/bash-guard/index.ts")));
 	const quotePath = require.resolve("shell-quote");

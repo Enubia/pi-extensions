@@ -34,7 +34,7 @@ pi install git:github.com/Enubia/pi-extensions
 
 ## Development
 
-Requires Node.js 22.19+.
+Requires Node.js 24.12+.
 
 ```sh
 npm ci
