@@ -14,5 +14,5 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["extensions/**/*.ts", "test/**/*.ts", "test/support/*.mjs", "vitest.config.ts"]
+  "include": ["extensions/**/*.ts", "apps/pi-remote/**/*.ts", "test/**/*.ts", "test/support/*.mjs", "vitest.config.ts"]
 }
