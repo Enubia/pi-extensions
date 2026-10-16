@@ -9,6 +9,16 @@ import {
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import {
+	type AskAnswer,
+	QUESTION_ANSWER_EVENT,
+	QUESTION_CLOSED_EVENT,
+	QUESTION_OPENED_EVENT,
+	type QuestionMode as AskUserQuestionMode,
+	type QuestionOpened,
+	type RemoteAnswerInput,
+	resolveRemoteAnswers,
+} from "./question-events.ts";
 
 interface AskOption {
 	label: string;
@@ -23,28 +33,7 @@ interface DisplayOption extends AskOption {
 	isSubmit?: boolean;
 }
 
-interface TextAnswer {
-	type: "text";
-	label: string;
-	value: string;
-}
-
-interface OptionAnswer {
-	type: "option";
-	label: string;
-	value: string;
-	index: number;
-}
-
-interface OtherAnswer {
-	type: "other";
-	label: string;
-	value: string;
-}
-
-type AskAnswer = TextAnswer | OptionAnswer | OtherAnswer;
 type AskUserQuestionStatus = "answered" | "cancelled" | "unavailable";
-type AskUserQuestionMode = "text" | "single-select" | "multi-select";
 
 interface AskUserQuestionResultDetails {
 	status: AskUserQuestionStatus;
@@ -200,11 +189,95 @@ function buildResult(question: string, context: string | undefined, mode: AskUse
 	};
 }
 
+interface RemoteLink {
+	attach(dismiss: (answers: AskAnswer[] | null) => void): void;
+	push(answers: AskAnswer[] | null): void;
+}
+
+function createRemoteLink(): RemoteLink {
+	let dismiss: ((answers: AskAnswer[] | null) => void) | undefined;
+	let early: AskAnswer[] | null | undefined;
+	return {
+		attach(fn) {
+			dismiss = fn;
+			if (early !== undefined) fn(early);
+		},
+		push(answers) {
+			if (dismiss) dismiss(answers);
+			else early = answers;
+		},
+	};
+}
+
+async function askText(
+	ctx: ExtensionContext,
+	question: string,
+	context: string | undefined,
+	link: RemoteLink,
+): Promise<string | undefined> {
+	return ctx.ui.custom<string | undefined>((tui, theme, _kb, done) => {
+		let cachedLines: string[] | undefined;
+		let cachedWidth = -1;
+		const editor = new Editor(tui, createEditorTheme(theme));
+
+		editor.onSubmit = (value) => done(value);
+		link.attach((answers) => done(answers ? answers[0].label : undefined));
+
+		function render(width: number): string[] {
+			if (cachedLines && cachedWidth === width) return cachedLines;
+
+			const lines: string[] = [];
+			const add = (text: string) => lines.push(truncateToWidth(text, width));
+
+			add(theme.fg("accent", "─".repeat(width)));
+			addWrapped(lines, theme.fg("text", ` ${question}`), width);
+			if (context) {
+				lines.push("");
+				addWrapped(lines, theme.fg("muted", ` ${context}`), width);
+			}
+			lines.push("");
+			for (const line of editor.render(Math.max(1, width - 2))) {
+				add(` ${line}`);
+			}
+			lines.push("");
+			add(theme.fg("dim", " Enter to submit • Shift+Enter for newline • Esc to cancel"));
+			add(theme.fg("accent", "─".repeat(width)));
+			cachedLines = lines;
+			cachedWidth = width;
+			return lines;
+		}
+
+		return {
+			render,
+			invalidate: () => {
+				cachedLines = undefined;
+			},
+			handleInput(data: string) {
+				if (matchesKey(data, Key.escape)) {
+					done(undefined);
+					return;
+				}
+				editor.handleInput(data);
+				cachedLines = undefined;
+				tui.requestRender();
+			},
+			get focused() {
+				return editor.focused;
+			},
+			set focused(value: boolean) {
+				editor.focused = value;
+				cachedLines = undefined;
+			},
+		};
+	});
+}
+
 async function askSingleChoice(
 	ctx: ExtensionContext,
 	question: string,
 	context: string | undefined,
 	options: AskOption[],
+	link: RemoteLink,
 ): Promise<AskAnswer | null> {
 	const otherLabel = getOtherLabel(options);
 	const allOptions: DisplayOption[] = [
@@ -218,6 +291,7 @@ async function askSingleChoice(
 		let cachedLines: string[] | undefined;
 		let cachedWidth = -1;
 		const editor = new Editor(tui, createEditorTheme(theme));
+		link.attach((answers) => done(answers ? answers[0] : null));
 
 		editor.onSubmit = (value) => {
 			const trimmed = value.trim();
@@ -338,6 +412,7 @@ async function askMultiChoice(
 	question: string,
 	context: string | undefined,
 	options: AskOption[],
+	link: RemoteLink,
 ): Promise<AskAnswer[] | null> {
 	const otherLabel = getOtherLabel(options);
 	const choiceItems: DisplayOption[] = options.map((option, index) => ({
@@ -359,6 +434,7 @@ async function askMultiChoice(
 		let cachedWidth = -1;
 		const selected = new Map<string, AskAnswer>();
 		const editor = new Editor(tui, createEditorTheme(theme));
+		link.attach(done);
 
 		editor.onSubmit = (value) => {
 			const trimmed = value.trim();
@@ -585,7 +661,7 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 		],
 		parameters: AskUserQuestionParams,
 
-		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+		async execute(toolCallId, params, signal, _onUpdate, ctx) {
 			const options = normalizeOptions(params.options);
 			const context = params.details?.trim() || undefined;
 			const mode: AskUserQuestionMode = options.length === 0 ? "text" : params.multiSelect ? "multi-select" : "single-select";
@@ -599,30 +675,61 @@ export default function askUserQuestion(pi: ExtensionAPI) {
 			}
 
 			return withUILock(async () => {
-				if (mode === "text") {
-					const editorTitle = context ? `${params.question}\n\n${context}` : params.question;
-					const answer = await ctx.ui.editor(editorTitle);
-					if (answer === undefined) {
-						return cancelledResult(params.question, mode, context);
-					}
-					return buildResult(params.question, context, mode, [
-						{ type: "text", label: answer.trim(), value: answer.trim() },
-					]);
-				}
-
-				if (mode === "single-select") {
-					const answer = await askSingleChoice(ctx, params.question, context, options);
-					if (!answer) {
-						return cancelledResult(params.question, mode, context);
-					}
-					return buildResult(params.question, context, mode, [answer]);
-				}
-
-				const answers = await askMultiChoice(ctx, params.question, context, options);
-				if (!answers) {
+				if (signal?.aborted) {
 					return cancelledResult(params.question, mode, context);
 				}
-				return buildResult(params.question, context, mode, answers);
+
+				const link = createRemoteLink();
+				const opened: QuestionOpened = {
+					toolCallId,
+					question: params.question,
+					...(context ? { details: context } : {}),
+					mode,
+					options: options.map(({ label, value, description }) => ({ label, value, ...(description ? { description } : {}) })),
+				};
+				let answered = false;
+				const stopListening = pi.events.on(QUESTION_ANSWER_EVENT, (data) => {
+					if (answered || typeof data !== "object" || data === null) return;
+					const event = data as { toolCallId?: unknown; answers?: unknown };
+					if (event.toolCallId !== toolCallId || !Array.isArray(event.answers)) return;
+					const resolved = resolveRemoteAnswers(opened, event.answers as RemoteAnswerInput[]);
+					if (!resolved) return;
+					answered = true;
+					link.push(sortAnswers(resolved));
+				});
+				const onAbort = () => link.push(null);
+				signal?.addEventListener("abort", onAbort, { once: true });
+				pi.events.emit(QUESTION_OPENED_EVENT, opened);
+
+				try {
+					if (mode === "text") {
+						const answer = await askText(ctx, params.question, context, link);
+						if (answer === undefined) {
+							return cancelledResult(params.question, mode, context);
+						}
+						return buildResult(params.question, context, mode, [
+							{ type: "text", label: answer.trim(), value: answer.trim() },
+						]);
+					}
+
+					if (mode === "single-select") {
+						const answer = await askSingleChoice(ctx, params.question, context, options, link);
+						if (!answer) {
+							return cancelledResult(params.question, mode, context);
+						}
+						return buildResult(params.question, context, mode, [answer]);
+					}
+
+					const answers = await askMultiChoice(ctx, params.question, context, options, link);
+					if (!answers) {
+						return cancelledResult(params.question, mode, context);
+					}
+					return buildResult(params.question, context, mode, answers);
+				} finally {
+					stopListening();
+					signal?.removeEventListener("abort", onAbort);
+					pi.events.emit(QUESTION_CLOSED_EVENT, { toolCallId });
+				}
 			});
 		},
 

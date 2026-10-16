@@ -1,3 +1,5 @@
+import type { QuestionMode, QuestionOption, RemoteAnswerInput } from "../question-events.ts";
+
 export const PROTOCOL_VERSION = 1;
 
 export type RemoteState = "busy" | "input" | "tui-dialog" | "idle";
@@ -32,7 +34,9 @@ export type SendRequest = Versioned<{ type: "send"; id: string; text: string; mo
 
 export type AbortRequest = Versioned<{ type: "abort"; id: string }>;
 
-export type ClientMessage = SnapshotRequest | SendRequest | AbortRequest;
+export type AnswerRequest = Versioned<{ type: "answer"; id: string; toolCallId: string; answers: RemoteAnswerInput[] }>;
+
+export type ClientMessage = SnapshotRequest | SendRequest | AbortRequest | AnswerRequest;
 
 export type HelloMessage = Versioned<{
 	type: "hello";
@@ -58,11 +62,22 @@ export type TextDeltaMessage = Versioned<{ type: "text_delta"; id: string; delta
 
 export type AckMessage = Versioned<{ type: "ack"; id: string }>;
 
-export type ErrorCode = "incompatible" | "bad_request" | "unknown_type" | "failed";
+export type QuestionMessage = Versioned<{
+	type: "question";
+	toolCallId: string;
+	question: string;
+	details?: string;
+	mode: QuestionMode;
+	options: QuestionOption[];
+}>;
+
+export type QuestionClosedMessage = Versioned<{ type: "question_closed"; toolCallId: string }>;
+
+export type ErrorCode = "incompatible" | "bad_request" | "unknown_type" | "failed" | "stale";
 
 export type ErrorMessage = Versioned<{ type: "error"; id?: string; code: ErrorCode; message: string }>;
 
-export type ServerMessage = HelloMessage | StateMessage | LabelMessage | SnapshotResultMessage | EntryMessage | TextDeltaMessage | AckMessage | ErrorMessage;
+export type ServerMessage = HelloMessage | StateMessage | LabelMessage | SnapshotResultMessage | EntryMessage | TextDeltaMessage | AckMessage | QuestionMessage | QuestionClosedMessage | ErrorMessage;
 
 export const DEFAULT_SNAPSHOT_LIMIT = 50;
 

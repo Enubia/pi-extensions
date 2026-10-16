@@ -1,3 +1,4 @@
+import type { RemoteAnswerInput } from "../question-events.ts";
 import { DEFAULT_SNAPSHOT_LIMIT, type CondensedEntry, type CondensedToolEntry, type ClientMessage, type ErrorCode, PROTOCOL_VERSION, type RemoteState, type SendMode, type ToolStatus } from "./protocol.ts";
 
 const MAX_SUMMARY_LENGTH = 80;
@@ -155,6 +156,16 @@ function invalid(id: string | undefined, code: ErrorCode, message: string): Vali
 	return { ok: false, ...(id === undefined ? {} : { id }), code, message };
 }
 
+function isAnswerList(value: unknown): value is RemoteAnswerInput[] {
+	if (!Array.isArray(value) || value.length === 0) return false;
+	return value.every((item) => {
+		const answer = record(item);
+		if (!answer) return false;
+		if (answer.type === "option") return typeof answer.index === "number" && Number.isInteger(answer.index);
+		return (answer.type === "other" || answer.type === "text") && typeof answer.text === "string";
+	});
+}
+
 export function validateClientMessage(value: unknown): ValidationResult {
 	const message = record(value);
 	if (!message) return invalid(undefined, "bad_request", "message must be an object");
@@ -167,6 +178,10 @@ export function validateClientMessage(value: unknown): ValidationResult {
 		case "snapshot":
 			if (message.before !== undefined && typeof message.before !== "string") return invalid(id, "bad_request", "before must be a string");
 			if (message.limit !== undefined && typeof message.limit !== "number") return invalid(id, "bad_request", "limit must be a number");
+			return { ok: true, message: message as ClientMessage };
+		case "answer":
+			if (typeof message.toolCallId !== "string" || !message.toolCallId) return invalid(id, "bad_request", "toolCallId is required");
+			if (!isAnswerList(message.answers)) return invalid(id, "bad_request", "answers must be a non-empty list of option, other or text answers");
 			return { ok: true, message: message as ClientMessage };
 		case "send":
 			if (typeof message.text !== "string" || !message.text.trim()) return invalid(id, "bad_request", "text is required");

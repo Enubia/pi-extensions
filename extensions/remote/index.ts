@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isInputPromptTool, sessionLabel } from "../attention-notify/core.ts";
 import { assistantMessageId, assistantTextEntry, condenseEntries, createStateTracker, pageEntries, record, routeSend, toolEntry, userEntry, validateClientMessage } from "./core.ts";
+import { QUESTION_ANSWER_EVENT, QUESTION_CLOSED_EVENT, QUESTION_OPENED_EVENT, type QuestionClosed, type QuestionOpened, resolveRemoteAnswers } from "../question-events.ts";
 import { type ClientMessage, type CondensedEntry, type ErrorCode, PROTOCOL_VERSION, type RemoteState, type ServerMessage } from "./protocol.ts";
 import { type RemoteClient, type SocketServer, startSocketServer } from "./server.ts";
 
@@ -17,6 +18,8 @@ export default function remoteExtension(pi: ExtensionAPI) {
 	const durations = new Map<string, number>();
 	const toolCalls = new Map<string, { args: unknown; timestamp: number }>();
 	let server: SocketServer | undefined;
+	let pendingQuestion: QuestionOpened | undefined;
+	let stopQuestionListeners: (() => void) | undefined;
 	let current: ExtensionContext | undefined;
 	let publishedState: RemoteState = "idle";
 	let lastActivity = Date.now();
@@ -67,6 +70,50 @@ export default function remoteExtension(pi: ExtensionAPI) {
 			...(process.env.PI_SUBAGENT_PARENT_SESSION ? { parentSession: process.env.PI_SUBAGENT_PARENT_SESSION } : {}),
 			lastActivity,
 		}));
+		if (pendingQuestion) reply(client, questionMessage(pendingQuestion));
+	}
+
+	function questionMessage(question: QuestionOpened): ServerMessage {
+		return v({
+			type: "question",
+			toolCallId: question.toolCallId,
+			question: question.question,
+			...(question.details === undefined ? {} : { details: question.details }),
+			mode: question.mode,
+			options: question.options,
+		});
+	}
+
+	function answer(client: RemoteClient, message: Extract<ClientMessage, { type: "answer" }>) {
+		const question = pendingQuestion;
+		if (!question || question.toolCallId !== message.toolCallId) {
+			fail(client, message.id, "stale", "question is no longer pending");
+			return;
+		}
+		if (!resolveRemoteAnswers(question, message.answers)) {
+			fail(client, message.id, "bad_request", "answers do not fit the question");
+			return;
+		}
+		pendingQuestion = undefined;
+		pi.events.emit(QUESTION_ANSWER_EVENT, { toolCallId: message.toolCallId, answers: message.answers });
+		reply(client, v({ type: "ack", id: message.id }));
+	}
+
+	function listenForQuestions() {
+		const offOpened = pi.events.on(QUESTION_OPENED_EVENT, (data) => {
+			const question = data as QuestionOpened;
+			pendingQuestion = question;
+			publish(questionMessage(question));
+		});
+		const offClosed = pi.events.on(QUESTION_CLOSED_EVENT, (data) => {
+			const { toolCallId } = data as QuestionClosed;
+			if (pendingQuestion?.toolCallId === toolCallId) pendingQuestion = undefined;
+			publish(v({ type: "question_closed", toolCallId }));
+		});
+		stopQuestionListeners = () => {
+			offOpened();
+			offClosed();
+		};
 	}
 
 	function handleMessage(client: RemoteClient, message: ClientMessage) {
@@ -81,6 +128,9 @@ export default function remoteExtension(pi: ExtensionAPI) {
 			case "send":
 				pi.sendUserMessage(message.text, { ...routeSend(ctx.isIdle(), message.mode), expandPromptTemplates: true });
 				reply(client, v({ type: "ack", id: message.id }));
+				return;
+			case "answer":
+				answer(client, message);
 				return;
 			case "abort":
 				ctx.abort();
@@ -109,6 +159,9 @@ export default function remoteExtension(pi: ExtensionAPI) {
 	}
 
 	function stop() {
+		stopQuestionListeners?.();
+		stopQuestionListeners = undefined;
+		pendingQuestion = undefined;
 		server?.close();
 		server = undefined;
 		publishedState = "idle";
@@ -119,6 +172,7 @@ export default function remoteExtension(pi: ExtensionAPI) {
 		stop();
 		if (ctx.mode !== "tui") return;
 		current = ctx;
+		listenForQuestions();
 		try {
 			server = startSocketServer(remoteDirectory(), process.pid, { onConnect: hello, onLine });
 		} catch {

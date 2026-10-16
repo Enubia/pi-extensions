@@ -7,6 +7,7 @@ import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import remoteExtension from "../../extensions/remote/index.ts";
 import { PROTOCOL_VERSION } from "../../extensions/remote/protocol.ts";
+import { QUESTION_ANSWER_EVENT, QUESTION_CLOSED_EVENT, QUESTION_OPENED_EVENT } from "../../extensions/question-events.ts";
 
 type Handler = (event: unknown, ctx: unknown) => unknown;
 
@@ -15,7 +16,20 @@ function createHarness(options: { mode?: string; idle?: boolean; branch?: unknow
 	const sent: unknown[][] = [];
 	let aborted = 0;
 	const state = { idle: options.idle ?? true, name: options.name };
+	const listeners = new Map<string, Array<(data: unknown) => void>>();
+	const bus = {
+		on(name: string, handler: (data: unknown) => void) {
+			listeners.set(name, [...(listeners.get(name) ?? []), handler]);
+			return () => {
+				listeners.set(name, (listeners.get(name) ?? []).filter((item) => item !== handler));
+			};
+		},
+		emit(name: string, data: unknown) {
+			for (const handler of [...(listeners.get(name) ?? [])]) handler(data);
+		},
+	};
 	const pi = {
+		events: bus,
 		on(event: string, handler: Handler) {
 			handlers.set(event, [...(handlers.get(event) ?? []), handler]);
 		},
@@ -39,6 +53,8 @@ function createHarness(options: { mode?: string; idle?: boolean; branch?: unknow
 		state,
 		sent,
 		aborted: () => aborted,
+		bus,
+		listenerCount: (name: string) => (listeners.get(name) ?? []).length,
 		handlerCount: () => [...handlers.values()].flat().length,
 		async emit(event: string, payload: Record<string, unknown> = {}) {
 			for (const handler of handlers.get(event) ?? []) await handler({ type: event, ...payload }, ctx);
@@ -324,6 +340,141 @@ test("session switch clears stale question and dialog state", async () => {
 		await harness.emit("session_start", { reason: "new" });
 		const client = new Client(socketPath(dir));
 		assert.equal((await client.next((m) => m.type === "hello")).state, "idle");
+		client.close();
+		await harness.emit(STOP);
+	});
+});
+
+const OPENED = {
+	toolCallId: "q1",
+	question: "Pick",
+	details: "why",
+	mode: "single-select",
+	options: [{ label: "A", value: "A" }, { label: "B", value: "b", description: "second" }],
+};
+
+test("a question opened in the session is relayed, and closing is relayed", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		await harness.emit("session_start", { reason: "startup" });
+		const client = new Client(socketPath(dir));
+		await client.next((m) => m.type === "hello");
+		harness.bus.emit(QUESTION_OPENED_EVENT, OPENED);
+		const question = await client.next((m) => m.type === "question");
+		assert.deepEqual(question, { v: PROTOCOL_VERSION, type: "question", ...OPENED });
+		harness.bus.emit(QUESTION_CLOSED_EVENT, { toolCallId: "q1" });
+		assert.deepEqual(await client.next((m) => m.type === "question_closed"), { v: PROTOCOL_VERSION, type: "question_closed", toolCallId: "q1" });
+		client.close();
+		await harness.emit(STOP);
+	});
+});
+
+test("a client connecting mid-question gets the pending question after hello, none after close", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		await harness.emit("session_start", { reason: "startup" });
+		harness.bus.emit(QUESTION_OPENED_EVENT, OPENED);
+		const late = new Client(socketPath(dir));
+		await late.next((m) => m.type === "question");
+		assert.deepEqual(late.messages.map((m) => m.type), ["hello", "question"]);
+		harness.bus.emit(QUESTION_CLOSED_EVENT, { toolCallId: "q1" });
+		await late.next((m) => m.type === "question_closed");
+		const after = new Client(socketPath(dir));
+		await after.next((m) => m.type === "hello");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		assert.deepEqual(after.messages.map((m) => m.type), ["hello"]);
+		late.close();
+		after.close();
+		await harness.emit(STOP);
+	});
+});
+
+test("answer for the pending question is forwarded once; a second answer is stale", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		const forwarded: unknown[] = [];
+		harness.bus.on(QUESTION_ANSWER_EVENT, (data) => forwarded.push(data));
+		await harness.emit("session_start", { reason: "startup" });
+		const client = new Client(socketPath(dir));
+		await client.next((m) => m.type === "hello");
+		harness.bus.emit(QUESTION_OPENED_EVENT, OPENED);
+		client.send({ type: "answer", id: "a1", toolCallId: "q1", answers: [{ type: "option", index: 2 }] });
+		assert.deepEqual(await client.next((m) => m.type === "ack" && m.id === "a1"), { v: PROTOCOL_VERSION, type: "ack", id: "a1" });
+		assert.deepEqual(forwarded, [{ toolCallId: "q1", answers: [{ type: "option", index: 2 }] }]);
+		client.send({ type: "answer", id: "a2", toolCallId: "q1", answers: [{ type: "option", index: 1 }] });
+		assert.equal((await client.next((m) => m.id === "a2")).code, "stale");
+		assert.equal(forwarded.length, 1);
+		client.close();
+		await harness.emit(STOP);
+	});
+});
+
+test("answers for closed, unknown or never-opened questions are stale", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		const forwarded: unknown[] = [];
+		harness.bus.on(QUESTION_ANSWER_EVENT, (data) => forwarded.push(data));
+		await harness.emit("session_start", { reason: "startup" });
+		const client = new Client(socketPath(dir));
+		await client.next((m) => m.type === "hello");
+		client.send({ type: "answer", id: "n", toolCallId: "q1", answers: [{ type: "text", text: "x" }] });
+		assert.equal((await client.next((m) => m.id === "n")).code, "stale");
+		harness.bus.emit(QUESTION_OPENED_EVENT, OPENED);
+		client.send({ type: "answer", id: "w", toolCallId: "other", answers: [{ type: "option", index: 1 }] });
+		assert.equal((await client.next((m) => m.id === "w")).code, "stale");
+		harness.bus.emit(QUESTION_CLOSED_EVENT, { toolCallId: "q1" });
+		client.send({ type: "answer", id: "c", toolCallId: "q1", answers: [{ type: "option", index: 1 }] });
+		assert.equal((await client.next((m) => m.id === "c")).code, "stale");
+		assert.deepEqual(forwarded, []);
+		client.close();
+		await harness.emit(STOP);
+	});
+});
+
+test("malformed or mode-invalid answers are rejected and leave the question pending", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		const forwarded: unknown[] = [];
+		harness.bus.on(QUESTION_ANSWER_EVENT, (data) => forwarded.push(data));
+		await harness.emit("session_start", { reason: "startup" });
+		const client = new Client(socketPath(dir));
+		await client.next((m) => m.type === "hello");
+		harness.bus.emit(QUESTION_OPENED_EVENT, OPENED);
+		const bad: Record<string, unknown>[] = [
+			{ id: "b1", toolCallId: "q1", answers: "nope" },
+			{ id: "b2", toolCallId: "q1", answers: [{ type: "option", index: "1" }] },
+			{ id: "b3", toolCallId: "q1", answers: [{ type: "text", text: "x" }] },
+			{ id: "b4", toolCallId: "q1", answers: [{ type: "option", index: 3 }] },
+			{ id: "b5", toolCallId: "q1", answers: [] },
+			{ id: "b6", answers: [] },
+		];
+		for (const message of bad) {
+			client.send({ type: "answer", ...message });
+			assert.equal((await client.next((m) => m.id === message.id)).code, "bad_request", String(message.id));
+		}
+		assert.deepEqual(forwarded, []);
+		client.send({ type: "answer", id: "ok", toolCallId: "q1", answers: [{ type: "other", text: "custom" }] });
+		await client.next((m) => m.type === "ack" && m.id === "ok");
+		assert.equal(forwarded.length, 1);
+		client.close();
+		await harness.emit(STOP);
+	});
+});
+
+test("session end clears the pending question and detaches question listeners", async () => {
+	await withDir(async (dir) => {
+		const harness = createHarness();
+		await harness.emit("session_start", { reason: "startup" });
+		assert.equal(harness.listenerCount(QUESTION_OPENED_EVENT), 1);
+		harness.bus.emit(QUESTION_OPENED_EVENT, OPENED);
+		await harness.emit(STOP);
+		assert.equal(harness.listenerCount(QUESTION_OPENED_EVENT), 0);
+		assert.equal(harness.listenerCount(QUESTION_CLOSED_EVENT), 0);
+		await harness.emit("session_start", { reason: "startup" });
+		const client = new Client(socketPath(dir));
+		await client.next((m) => m.type === "hello");
+		client.send({ type: "answer", id: "z", toolCallId: "q1", answers: [{ type: "option", index: 1 }] });
+		assert.equal((await client.next((m) => m.id === "z")).code, "stale");
 		client.close();
 		await harness.emit(STOP);
 	});
