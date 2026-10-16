@@ -10,6 +10,7 @@ const SOCKET_NAME = /^(\d+)\.sock$/;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const RESCAN_DEBOUNCE_MS = 25;
 const REFUSED_RETRY_MS = 150;
+const POLL_INTERVAL_MS = 500;
 
 export type SessionView = SessionInfo & { parentPid?: number };
 
@@ -36,6 +37,7 @@ export function createHub(options: HubOptions): Hub {
 	const listeners = new Set<(event: HubEvent) => void>();
 	let watcher: FSWatcher | undefined;
 	let rescanTimer: NodeJS.Timeout | undefined;
+	let pollTimer: NodeJS.Timeout | undefined;
 	let stopped = false;
 
 	const emit = (event: HubEvent) => {
@@ -94,7 +96,9 @@ export function createHub(options: HubOptions): Hub {
 		}
 		for (const name of names) {
 			const match = SOCKET_NAME.exec(name);
-			if (match) connectTo(Number(match[1]));
+			if (!match) continue;
+			const pid = Number(match[1]);
+			if (!refusedOnce.has(pid)) connectTo(pid);
 		}
 	};
 
@@ -113,12 +117,16 @@ export function createHub(options: HubOptions): Hub {
 				watcher = watch(options.dir, scheduleScan);
 				watcher.on("error", () => {});
 			} catch {}
+			pollTimer = setInterval(scan, POLL_INTERVAL_MS);
+			pollTimer.unref();
 			scan();
 		},
 		stop() {
 			stopped = true;
 			if (rescanTimer) clearTimeout(rescanTimer);
 			rescanTimer = undefined;
+			if (pollTimer) clearInterval(pollTimer);
+			pollTimer = undefined;
 			watcher?.close();
 			watcher = undefined;
 			for (const connection of [...connections.values()]) connection.close();
