@@ -7,7 +7,7 @@ import observationalMemory from "../../extensions/observational-memory/src/index
 describe("factor ownership", () => {
 	it("root manifest loads only OM for factor", () => {
 		const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
-		expect(manifest.pi.extensions).toHaveLength(10);
+		expect(manifest.pi.extensions).toHaveLength(11);
 		expect(manifest.pi.extensions).not.toContain("./extensions/om-factor/index.ts");
 	});
 
