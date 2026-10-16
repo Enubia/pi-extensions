@@ -38,7 +38,7 @@ Only one hub runs per remote directory (`pi-remote.lock`). Remote directory: `~/
 
 Plain HTTP, no TLS. Anyone who can read your Wi-Fi traffic can read the token and everything shown.
 
-- Per-run token: 32 random bytes, generated at start, new on every run. Passed in the URL fragment (never sent in a request line), stored in `sessionStorage` and stripped from the address bar. `/events` and `/api/*` require it; the static page does not.
+- Per-run token: 32 random bytes, generated at start, new on every run. The QR URL carries it in the fragment, so the page load never sends it; the page then keeps it in `sessionStorage`, strips it from the address bar, and sends it as `?t=` on `/events` and as `Authorization: Bearer` on `/api/*`. Over plain HTTP anyone sniffing the Wi-Fi during the run can read it. `/events` and `/api/*` require it; the static page does not.
 - Source filter: requests from non-private addresses get 403. Allowed: loopback, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, IPv6 `::1`, `fc00::/7`, `fe80::/10`. The filter checks the socket address and does not understand proxies.
 - The hub binds all interfaces (dual-stack), so it is reachable on any network the Mac is on. Do not run it on untrusted Wi-Fi.
 - Per-session sockets are `0600` in a `0700` directory, so only your user can reach them.

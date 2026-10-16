@@ -12,7 +12,7 @@ Newline-delimited JSON, version `1` (`v` on every message; an unknown version ge
 
 | Direction | Messages |
 | --- | --- |
-| Session → client | `hello` (sent on connect: pid, session id, label, cwd, state, subagent/parent), `state`, `label`, `entry`, `text_delta`, `snapshot_result`, `ack`, `question`, `question_closed`, `error` |
+| Session → client | `hello` (sent on connect: pid, session id, label, cwd, state, last activity, subagent/parent), `state`, `label`, `entry`, `text_delta`, `snapshot_result`, `ack`, `question`, `question_closed`, `error` |
 | Client → session | `snapshot` (page back with `before`, `limit` default 50), `send` (`auto` or `followUp`), `abort`, `answer` |
 
 States: `busy`, `input` (waiting on `ask-user-question`), `tui-dialog`, `idle`. Transcript entries are condensed to `user`, `assistant` and `tool` with stable ids, so live updates and snapshots upsert by id. Request messages carry an `id`, answered by `ack`, `snapshot_result` or `error`.

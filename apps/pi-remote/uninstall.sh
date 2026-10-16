@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-here="$(cd "$(dirname "$0")" && pwd)"
+here="$(cd "$(dirname "$0")" && pwd -P)"
 link="$HOME/.local/bin/pi-remote"
 
 if [ -L "$link" ] && [ "$(readlink "$link")" = "$here/pi-remote.ts" ]; then
