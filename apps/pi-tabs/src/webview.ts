@@ -39,6 +39,24 @@ function decodeBase64(value: string): string {
 	return new TextDecoder().decode(Uint8Array.from(atob(value), (char) => char.charCodeAt(0)));
 }
 
+let overLink = false;
+const linkHover = {
+	hover: () => {
+		overLink = true;
+	},
+	leave: () => {
+		overLink = false;
+	},
+};
+
+const LEFT_MOUSE_BUTTON = /^\x1b\[<(\d+);\d+;\d+[Mm]$/;
+
+function isLinkClick(data: string): boolean {
+	if (!overLink) return false;
+	const match = LEFT_MOUSE_BUTTON.exec(data);
+	return !!match && (Number(match[1]) & 0b1100011) === 0;
+}
+
 const term = new Terminal({
 	allowProposedApi: true,
 	fontFamily: settings.fontFamily,
@@ -49,14 +67,14 @@ const term = new Terminal({
 	scrollback: 10_000,
 	theme: theme(),
 	vtExtensions: { kittyKeyboard: true },
-	linkHandler: { activate: (_event, url) => post({ type: "openUrl", url }) },
+	linkHandler: { activate: (_event, url) => post({ type: "openUrl", url }), ...linkHover },
 });
 
 const fit = new FitAddon();
 term.loadAddon(fit);
 term.loadAddon(new Unicode11Addon());
 term.unicode.activeVersion = "11";
-term.loadAddon(new WebLinksAddon((_event, url) => post({ type: "openUrl", url })));
+term.loadAddon(new WebLinksAddon((_event, url) => post({ type: "openUrl", url }), linkHover));
 
 const FILE_LINK = /(?<![\w/.~-])((?:~|\.{1,2})?\/?[\w@.+-]+(?:\/[\w@.+-]+)+|[\w@+-]+\.[A-Za-z][\w]{0,7})(?::(\d+)(?::(\d+))?)?/g;
 
@@ -71,6 +89,7 @@ term.registerLinkProvider({
 				text: whole,
 				range: { start: { x: match.index + 1, y }, end: { x: match.index + whole.length, y } },
 				activate: () => post({ type: "openFile", path: file, line: line ? Number(line) : undefined, column: column ? Number(column) : undefined }),
+				...linkHover,
 			});
 		}
 		callback(links);
@@ -141,7 +160,9 @@ function screenText(lines: number): string {
 }
 
 term.onTitleChange((title) => post({ type: "title", title }));
-term.onData((data) => post({ type: "input", data }));
+term.onData((data) => {
+	if (!isLinkClick(data)) post({ type: "input", data });
+});
 term.onBinary((data) => post({ type: "input", data }));
 term.onResize(({ cols, rows }) => post({ type: "resize", cols, rows }));
 
