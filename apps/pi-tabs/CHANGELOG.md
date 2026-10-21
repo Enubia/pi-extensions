@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3 (2026-10-21)
+
+### Fixes
+
+- stop pi from also opening clicked links ([55a3f32](https://github.com/Enubia/pi-extensions/commit/55a3f32))
+
+### Other
+
+- drop redundant onView activation event ([18136e1](https://github.com/Enubia/pi-extensions/commit/18136e1))
+
 ## 0.2.2 (2026-10-14)
 
 ### Fixes
