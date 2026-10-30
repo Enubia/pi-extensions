@@ -40,9 +40,20 @@ async function dispatch(handlers: SurfaceHandlers, op: string, body: Record<stri
 	}
 }
 
+const isWindows = process.platform === "win32";
+
+function socketPath(): string {
+	return isWindows ? `\\\\.\\pipe\\pi-tabs-${process.pid}` : path.join(os.tmpdir(), `pi-tabs-${process.pid}.sock`);
+}
+
+function removeSocket(socket: string): void {
+	if (!isWindows) fs.rmSync(socket, { force: true });
+}
+
 export function startSurfaceServer(handlers: SurfaceHandlers): SurfaceServer {
-	const socket = path.join(os.tmpdir(), `pi-tabs-${process.pid}.sock`);
-	fs.rmSync(socket, { force: true });
+	const socket = socketPath();
+
+	removeSocket(socket);
 	const server = http.createServer((request, response) => {
 		let raw = "";
 		request.on("data", (chunk) => (raw += chunk));
@@ -65,7 +76,7 @@ export function startSurfaceServer(handlers: SurfaceHandlers): SurfaceServer {
 		socket,
 		dispose: () => {
 			server.close();
-			fs.rmSync(socket, { force: true });
+			removeSocket(socket);
 		},
 	};
 }
