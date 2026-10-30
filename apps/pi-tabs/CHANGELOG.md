@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4 (2026-10-30)
+
+### Fixes
+
+- spawn pi via cmd.exe on Windows instead of a login shell ([33236c5](https://github.com/Enubia/pi-extensions/commit/33236c5))
+
 ## 0.2.3 (2026-10-21)
 
 ### Fixes
