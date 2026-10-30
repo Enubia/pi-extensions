@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6 (2026-10-30)
+
+### Fixes
+
+- use bundled conpty.dll on Windows so mouse wheel scrolls the transcript ([d63fecd](https://github.com/Enubia/pi-extensions/commit/d63fecd))
+
 ## 0.2.5 (2026-10-30)
 
 ### Fixes
