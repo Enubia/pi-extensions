@@ -16,7 +16,7 @@ type Pty = {
 };
 
 type PtyModule = {
-	spawn(file: string, args: string[] | string, options: { name: string; cols: number; rows: number; cwd: string; env: NodeJS.ProcessEnv }): Pty;
+	spawn(file: string, args: string[] | string, options: { name: string; cols: number; rows: number; cwd: string; env: NodeJS.ProcessEnv; useConptyDll?: boolean }): Pty;
 };
 
 type Attention = "input" | "done";
@@ -146,6 +146,7 @@ function spawn(session: Session, cols: number, rows: number) {
 		rows,
 		cwd: session.cwd,
 		env: childEnv(session),
+		useConptyDll: process.platform === "win32",
 	});
 	session.proc = proc;
 	if (session.pendingInput) {
