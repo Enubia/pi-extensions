@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 (2026-10-30)
+
+### Fixes
+
+- serve the subagent surface socket over a named pipe on Windows ([f219bc0](https://github.com/Enubia/pi-extensions/commit/f219bc0))
+
 ## 0.2.4 (2026-10-30)
 
 ### Fixes
