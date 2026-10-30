@@ -16,7 +16,7 @@ type Pty = {
 };
 
 type PtyModule = {
-	spawn(file: string, args: string[], options: { name: string; cols: number; rows: number; cwd: string; env: NodeJS.ProcessEnv }): Pty;
+	spawn(file: string, args: string[] | string, options: { name: string; cols: number; rows: number; cwd: string; env: NodeJS.ProcessEnv }): Pty;
 };
 
 type Attention = "input" | "done";
@@ -120,12 +120,27 @@ function childEnv(session: Session): NodeJS.ProcessEnv {
 	return env;
 }
 
-function spawn(session: Session, cols: number, rows: number) {
+function windowsBash(): string {
+	if (process.env.SHELL) return process.env.SHELL;
+	const gitBash = path.join(process.env.ProgramFiles || "C:\\Program Files", "Git", "bin", "bash.exe");
+	return fs.existsSync(gitBash) ? gitBash : "bash.exe";
+}
+
+function launchCommand(session: Session, args: string[]): [string, string[] | string] {
+	if (process.platform === "win32") {
+		if (session.kind === "shell") return [windowsBash(), ["-i"]];
+		const line = [session.command, ...args.map((arg) => `"${arg}"`)].join(" ");
+		return [process.env.ComSpec || "cmd.exe", `/d /s /c "${line}"`];
+	}
 	const shell = process.env.SHELL || "/bin/zsh";
+	return [shell, session.kind === "shell" ? ["-l", "-i"] : ["-l", "-i", "-c", `exec ${session.command} "$@"`, "pi", ...args]];
+}
+
+function spawn(session: Session, cols: number, rows: number) {
 	const bridge = vscode.Uri.joinPath(extensionUri, "pi", "vscode-bridge.ts").fsPath;
 	const args = ["-e", bridge, ...(session.file ? ["--session", session.file] : [])];
-	const shellArgs = session.kind === "shell" ? ["-l", "-i"] : ["-l", "-i", "-c", `exec ${session.command} "$@"`, "pi", ...args];
-	const proc = loadPty().spawn(shell, shellArgs, {
+	const [file, fileArgs] = launchCommand(session, args);
+	const proc = loadPty().spawn(file, fileArgs, {
 		name: "xterm-256color",
 		cols,
 		rows,

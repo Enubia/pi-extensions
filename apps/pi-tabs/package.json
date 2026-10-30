@@ -156,7 +156,7 @@
         "piTabs.command": {
           "type": "string",
           "default": "pi",
-          "description": "Command run through your login shell."
+          "description": "Command run through your login shell (cmd.exe on Windows)."
         },
         "piTabs.macOptionIsMeta": {
           "type": "boolean",
