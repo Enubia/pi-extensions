@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,7 @@ test("bash approval preserves medium redirection, high deletion, callback choice
 		const views: string[] = [];
 		let key = "\r";
 		const ctx = {
+			cwd: root,
 			hasUI: true,
 			ui: {
 				async custom(factory: (tui: Pick<TUI, "requestRender">, theme: Pick<Theme, "fg" | "bold">, kb: object, done: (result: string) => void) => Component, options: { overlay: boolean }) {
@@ -45,11 +46,15 @@ test("bash approval preserves medium redirection, high deletion, callback choice
 		assert.equal(await emit("rm file.txt > output.txt"), undefined);
 		assert.match(views[1], /Command flagged as HIGH risk/);
 		assert.match(views[1], /rm \(file deletion\)/);
+		writeFileSync(join(root, "wipe.sh"), "rm -rf build\n");
+		assert.equal(await emit("bash wipe.sh"), undefined);
+		assert.match(views[2], /Command flagged as HIGH risk/);
+		assert.match(views[2], /recursive delete .* in script wipe\.sh/);
 		key = "\x1b";
 		assert.partialDeepStrictEqual(await emit("git status"), { block: true });
-		assert.match(views[2], /Command flagged as MEDIUM risk/);
+		assert.match(views[3], /Command flagged as MEDIUM risk/);
 		assert.partialDeepStrictEqual(await emit("git status"), { block: true });
-		assert.equal(views.length, 3);
+		assert.equal(views.length, 4);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

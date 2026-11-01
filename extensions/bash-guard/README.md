@@ -31,6 +31,7 @@ a focused set of catastrophic/unrecoverable operations is hard-blocked with no u
 | Pattern | Reason |
 |---|---|
 | `rm -r` / `-rf` / `-Rf` | Recursive deletion |
+| `rmtree`, `remove_tree`, `fs.rm*(…, { recursive: true })`, `FileUtils.rm_rf`, `os.RemoveAll`, `["rm", "-rf"]` | Recursive deletion via interpreters |
 | `sudo` | Elevated privileges |
 | `curl\|sh`, `wget\|sh` | Pipe to shell (remote code execution) |
 | `mkfs*`, `newfs_*` | Filesystem formatting |
@@ -72,8 +73,20 @@ When disabled, prompting is skipped but a hard-block floor (the subagent table a
   { "bash-guard": { "disabled": true } }
   ```
 
+## Script-file bypass protection
+
+- Executed scripts are read and checked against the same table: `bash|sh|zsh|dash|ksh|fish x`,
+  `source x`, `. x`, `./x` / any path command (follows `cd`, env assignments, `env`/`nohup`/`time`/`exec`,
+  nested script calls up to 3 levels). Comment lines are ignored. Main session: hits escalate the
+  prompt to HIGH; subagent/disabled: hits hard-block.
+- Subagent/disabled: `write`/`edit` of scripts (`.sh`/`.bash`/`.zsh`/… or `#!` shebang) containing
+  table patterns is blocked.
+- A system-prompt guideline and every block reason tell the agent not to circumvent the guard.
+- Still a heuristic, not a sandbox: `npm run`, `make`, `xargs`, `find -exec`, interpreter script files
+  run as `python x.py`/`node x.js`, and obfuscation are not inspected.
+
 ## Notes
 
-- Scope: `bash` tool calls only (`write`/`edit` and user `!` commands are not intercepted).
+- Scope: agent `bash`, `write` and `edit` tool calls (user `!` commands are not intercepted).
 - `--bash-guard-auto-allow`: main-session flag that allows flagged commands when there is no UI
   (e.g. running pi non-interactively). Has no effect in subagent sessions.

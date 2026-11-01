@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import type { ExtensionAPI, ExtensionContext, ToolCallEvent } from "@earendil-works/pi-coding-agent";
 import { DynamicBorder, getAgentDir, isToolCallEventType } from "@earendil-works/pi-coding-agent";
 import type { SelectItem } from "@earendil-works/pi-tui";
 import { Container, SelectList, Text } from "@earendil-works/pi-tui";
@@ -361,9 +362,16 @@ const _isSubagent = Number.isFinite(_subagentDepth) && _subagentDepth >= 1;
 // Hard-block patterns for subagent (headless) mode. Criteria: unrecoverable by default AND
 // unlikely to be intentional in an automated context. Fewer false positives over broad coverage —
 // the interactive prompt handles the rest for main sessions.
-const HEADLESS_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
+type BlockRule = { pattern: RegExp; reason: string };
+
+const HEADLESS_BLOCKED: BlockRule[] = [
 	// Recursive deletion
 	{ pattern: /(?<!\bgit\s+)\brm\b[^#\n]*\s-(?:[a-zA-Z]*[rR]|-\brecursive\b)/, reason: "recursive delete (rm -r / -rf / -Rf)" },
+	{ pattern: /["']rm["']\s*,\s*["']-[a-zA-Z]*[rR]/, reason: "recursive delete (rm -r via subprocess)" },
+	{ pattern: /\b(?:rmtree|remove_tree)\b/, reason: "recursive delete (rmtree)" },
+	{ pattern: /\b(?:rmSync|rm|rmdirSync|rmdir)\s*\([^)]*\brecursive\s*:\s*true/, reason: "recursive delete (fs.rm recursive)" },
+	{ pattern: /\bFileUtils\.(?:rm_rf|rm_r|remove_dir|remove_entry)\b/, reason: "recursive delete (FileUtils)" },
+	{ pattern: /\bos\.RemoveAll\b/, reason: "recursive delete (os.RemoveAll)" },
 	// Privilege escalation
 	{ pattern: /\bsudo\b/, reason: "elevated privileges (sudo)" },
 	// Remote code execution via pipe-to-shell
@@ -397,7 +405,7 @@ const HEADLESS_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
 // disabled in an interactive (main) session. The user explicitly opts into
 // autonomy here, so routine git operations (commit/pull/push) are allowed
 // through; only truly catastrophic / non-recoverable patterns remain blocked.
-const MAIN_DISABLED_BLOCKED: Array<{ pattern: RegExp; reason: string }> = HEADLESS_BLOCKED.filter(
+const MAIN_DISABLED_BLOCKED: BlockRule[] = HEADLESS_BLOCKED.filter(
 	({ pattern }) => {
 		const src = pattern.source;
 		return !(
@@ -408,6 +416,136 @@ const MAIN_DISABLED_BLOCKED: Array<{ pattern: RegExp; reason: string }> = HEADLE
 		);
 	},
 );
+
+const NO_CIRCUMVENT =
+	"Do not work around bash-guard by moving the command into a script file, another interpreter, eval, encoding, or any other indirection.";
+
+const PROMPT_GUIDELINE =
+	"bash-guard blocks or prompts for destructive bash commands (recursive deletes, sudo, disk operations, destructive git). Never circumvent it via script files, other interpreters (python, node, perl, ...), eval, encoding, or indirection; if a command is blocked, stop and ask instead.";
+
+const SHELL_RUNNERS = new Set(["bash", "sh", "zsh", "dash", "ksh", "fish", "source", "."]);
+const COMMAND_WRAPPERS = new Set(["env", "nohup", "time", "exec", "command", "nice", "caffeinate"]);
+const SCRIPT_EXTENSION = /\.(?:sh|bash|zsh|ksh|dash|fish|command)$/i;
+const MAX_SCRIPT_BYTES = 512 * 1024;
+const MAX_SCRIPT_DEPTH = 3;
+
+function expandPath(base: string, path: string): string {
+	if (path === "~" || path.startsWith("~/")) return join(homedir(), path.slice(1));
+	return isAbsolute(path) ? path : resolve(base, path);
+}
+
+function executedScripts(command: string, cwd: string): string[] {
+	const paths: string[] = [];
+	let dir = cwd;
+	for (const line of command.split("\n")) {
+		let tokens: Token[];
+		try {
+			tokens = shellParse(line) as Token[];
+		} catch {
+			continue;
+		}
+		for (const seg of splitOnOps(tokens, ["&&", "||", ";", "|", "&", "|&", "(", ")"])) {
+			const args = tokensToStrings(seg);
+			let i = 0;
+			while (i < args.length && (/^[A-Za-z_]\w*=/.test(args[i]) || COMMAND_WRAPPERS.has(args[i]))) i++;
+			const cmd = args[i];
+			if (!cmd) continue;
+			const rest = args.slice(i + 1);
+			if (cmd === "cd") {
+				if (rest[0]) dir = expandPath(dir, rest[0]);
+				continue;
+			}
+			if (SHELL_RUNNERS.has(cmd)) {
+				if (rest.some((a) => /^-[a-zA-Z]*c/.test(a))) continue;
+				for (let j = 0; j < rest.length; j++) {
+					const arg = rest[j];
+					if (arg === "-o" || arg === "+o" || arg === "--rcfile" || arg === "--init-file") {
+						j++;
+						continue;
+					}
+					if (arg.startsWith("-") || arg.startsWith("+")) continue;
+					paths.push(expandPath(dir, arg));
+					break;
+				}
+				continue;
+			}
+			if (cmd.includes("/")) paths.push(expandPath(dir, cmd));
+		}
+	}
+	return paths;
+}
+
+function readScript(path: string): string | undefined {
+	try {
+		const stat = statSync(path);
+		if (!stat.isFile() || stat.size > MAX_SCRIPT_BYTES) return undefined;
+		const content = readFileSync(path, "utf8");
+		return content.includes("\0") ? undefined : content;
+	} catch {
+		return undefined;
+	}
+}
+
+function stripComments(content: string): string {
+	return content
+		.split("\n")
+		.filter((line) => !line.trimStart().startsWith("#"))
+		.join("\n");
+}
+
+function matchRules(text: string, rules: BlockRule[]): BlockRule[] {
+	return rules.filter(({ pattern }) => pattern.test(text));
+}
+
+function displayPath(cwd: string, path: string): string {
+	const rel = relative(cwd, path);
+	return rel && !rel.startsWith("..") ? rel : path;
+}
+
+function scanExecutedScripts(command: string, cwd: string, rules: BlockRule[], depth = 0, seen = new Set<string>()): string[] {
+	const hits: string[] = [];
+	for (const path of executedScripts(command, cwd)) {
+		if (seen.has(path)) continue;
+		seen.add(path);
+		const content = readScript(path);
+		if (content === undefined) continue;
+		const code = stripComments(content);
+		for (const { reason } of matchRules(code, rules)) hits.push(`${reason} in script ${displayPath(cwd, path)}`);
+		if (depth < MAX_SCRIPT_DEPTH) hits.push(...scanExecutedScripts(code, cwd, rules, depth + 1, seen));
+	}
+	return hits;
+}
+
+function startsWithShebang(path: string): boolean {
+	return readScript(path)?.startsWith("#!") ?? false;
+}
+
+function scanScriptWrite(event: ToolCallEvent, cwd: string, rules: BlockRule[]): string[] {
+	let path: string;
+	let text: string;
+	let isScript: boolean;
+	if (isToolCallEventType("write", event)) {
+		path = expandPath(cwd, event.input.path);
+		text = event.input.content;
+		isScript = SCRIPT_EXTENSION.test(path) || text.startsWith("#!");
+	} else if (isToolCallEventType("edit", event)) {
+		path = expandPath(cwd, event.input.path);
+		text = event.input.edits.map((e) => e.newText).join("\n");
+		isScript = SCRIPT_EXTENSION.test(path) || event.input.edits.some((e) => e.newText.startsWith("#!")) || startsWithShebang(path);
+	} else {
+		return [];
+	}
+	if (!isScript) return [];
+	return matchRules(stripComments(text), rules).map(({ reason }) => `${reason} in script ${displayPath(cwd, path)}`);
+}
+
+function blockedReasons(event: ToolCallEvent, cwd: string, rules: BlockRule[]): string[] {
+	if (isToolCallEventType("bash", event)) {
+		const command = event.input.command;
+		return [...matchRules(command, rules).map(({ reason }) => reason), ...scanExecutedScripts(command, cwd, rules)];
+	}
+	return scanScriptWrite(event, cwd, rules);
+}
 
 // Warning shown via ctx.ui.setStatus when bash-guard is disabled. Pi joins all
 // extension statuses on a single line sorted alphabetically by key, so:
@@ -446,22 +584,23 @@ function disabledBySettings(cwd: string): boolean {
 }
 
 export default function (pi: ExtensionAPI) {
+	pi.on("before_agent_start", async (event) => {
+		const guidelines = event.systemPromptOptions.promptGuidelines;
+		if (!guidelines.includes(PROMPT_GUIDELINE)) guidelines.push(PROMPT_GUIDELINE);
+	});
+
 	if (_isSubagent) {
 		// Subagent mode: hard-block catastrophic operations, no prompting.
-		pi.on("tool_call", async (event) => {
-			if (!isToolCallEventType("bash", event)) return;
-			const command = event.input.command;
-			for (const { pattern, reason } of HEADLESS_BLOCKED) {
-				if (pattern.test(command)) {
-					return {
-						block: true,
-						reason:
-							`Blocked by bash-guard: ${reason}. ` +
-							"This is a non-interactive subagent session — catastrophic operations are not permitted. " +
-							"Propose a safer alternative or ask the parent agent to confirm with the user.",
-					};
-				}
-			}
+		pi.on("tool_call", async (event, ctx) => {
+			const reasons = blockedReasons(event, ctx.cwd, HEADLESS_BLOCKED);
+			if (reasons.length === 0) return;
+			return {
+				block: true,
+				reason:
+					`Blocked by bash-guard: ${reasons.join("; ")}. ` +
+					"This is a non-interactive subagent session — catastrophic operations are not permitted. " +
+					`${NO_CIRCUMVENT} Propose a safer alternative or ask the parent agent to confirm with the user.`,
+			};
 		});
 		return;
 	}
@@ -521,28 +660,29 @@ export default function (pi: ExtensionAPI) {
 	const ABORT_REMEMBER_MS = 60_000;
 
 	pi.on("tool_call", async (event, ctx) => {
-		if (!isToolCallEventType("bash", event)) return;
-
-		const command = event.input.command;
-
 		// Disabled (autonomous) mode: skip interactive prompting entirely, but keep
 		// a hard-block floor for catastrophic operations.
 		if (disabled) {
-			for (const { pattern, reason } of MAIN_DISABLED_BLOCKED) {
-				if (pattern.test(command)) {
-					return {
-						block: true,
-						reason:
-							`Blocked by bash-guard (disabled-mode floor): ${reason}. ` +
-							"Even with bash-guard disabled, this pattern is considered too destructive to run unattended. " +
-							"Re-enable bash-guard with /bash-guard and confirm interactively, or propose a safer alternative.",
-					};
-				}
-			}
-			return;
+			const reasons = blockedReasons(event, ctx.cwd, MAIN_DISABLED_BLOCKED);
+			if (reasons.length === 0) return;
+			return {
+				block: true,
+				reason:
+					`Blocked by bash-guard (disabled-mode floor): ${reasons.join("; ")}. ` +
+					"Even with bash-guard disabled, this pattern is considered too destructive to run unattended. " +
+					`${NO_CIRCUMVENT} Re-enable bash-guard with /bash-guard and confirm interactively, or propose a safer alternative.`,
+			};
 		}
 
-		const risk = analyzeBashCommand(command);
+		if (!isToolCallEventType("bash", event)) return;
+
+		const command = event.input.command;
+		const floorReasons = blockedReasons(event, ctx.cwd, MAIN_DISABLED_BLOCKED);
+		const analyzed = analyzeBashCommand(command);
+		const risk: Risk | null =
+			floorReasons.length > 0
+				? { severity: "high", reasons: [...new Set([...(analyzed?.reasons ?? []), ...floorReasons])] }
+				: analyzed;
 		if (!risk) return;
 
 		const now = Date.now();
@@ -567,7 +707,7 @@ export default function (pi: ExtensionAPI) {
 		return {
 			block: true,
 			reason:
-				"Blocked by user via bash-guard (potentially destructive command). Ask the user for confirmation or propose a non-destructive alternative.",
+				`Blocked by user via bash-guard (potentially destructive command). ${NO_CIRCUMVENT} Ask the user for confirmation or propose a non-destructive alternative.`,
 		};
 	});
 }
