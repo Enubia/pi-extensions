@@ -1,7 +1,6 @@
 import { agentLoop, type AgentContext, type AgentLoopConfig, type AgentTool } from "@earendil-works/pi-agent-core";
 import type { Message, Model, ModelThinkingLevel } from "@earendil-works/pi-ai/compat";
-import { Type } from "@earendil-works/pi-ai/compat";
-import type { Static } from "typebox";
+import { Type, type Static } from "typebox";
 import { hashId } from "../../ids.js";
 import { WorkerStreamError, logAgentStreamError } from "../stream-errors.js";
 import { reportCost } from "../usage-cost.js";
