@@ -89,6 +89,12 @@ describe("isRetryableErrorTurn", () => {
 		}
 	});
 
+	it("recognises closed connections and bare socket error codes pi retries since 1.6.0", () => {
+		for (const errorMessage of ["Connection closed.", "read ECONNRESET", "write EPIPE", "connect ETIMEDOUT"]) {
+			expect(isRetryableErrorTurn({ message: { role: "assistant", stopReason: "error", errorMessage } })).toBe(true);
+		}
+	});
+
 	it("ignores quota and billing exhaustion that pi does not retry", () => {
 		for (const errorMessage of ["429 insufficient_quota", "429 Monthly usage limit reached"]) {
 			expect(isRetryableErrorTurn({ message: { role: "assistant", stopReason: "error", errorMessage } })).toBe(false);
